@@ -1,0 +1,88 @@
+# Sensor data simulator
+#
+# Copyright (c) 2019 Nordic Semiconductor
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menuconfig PMW3610
+    bool "PMW3610 mouse optical sensor"
+  select SPI
+    help
+      Enable PMW3610 mouse optical sensor.
+
+if PMW3610
+
+config PMW3610_SWAP_XY
+  bool "Swap the X/Y axis of PMW3610 sensor"
+
+config PMW3610_INVERT_X
+  bool "Invert the X axis of PMW3610 sensor"
+
+config PMW3610_INVERT_Y
+  bool "Invert the Y axis of PMW3610 sensor"
+
+config PMW3610_REPORT_INTERVAL_MIN
+	int "PMW3610's default minimum report rate"
+	default 0
+	help
+	  Default minimum report interval in milliseconds.
+		Slow down input reporting for hid queue over the air.
+		Turn value down to 8ms to get sharp response if use with USB only.
+
+config PMW3610_SMART_ALGORITHM
+  bool "Enable an algorithm of PMW3610 to enhance surface coverage"
+  default y
+  help
+    Enable the integration of the smart algorithm as the datasheet implementation.
+    The algorithm is used to extend the tracking acrocss a wider range of surfaces
+    such as graniles and tiles.
+
+config PMW3610_RUN_DOWNSHIFT_TIME_MS
+    int "PMW3610's default RUN mode downshift time"
+    default 128
+    range 13 3264
+    help
+      Default RUN mode downshift down time in milliseconds.
+      Time after which sensor goes from RUN to REST1 mode.
+
+config PMW3610_REST1_DOWNSHIFT_TIME_MS
+    int "PMW3610's default REST1 mode downshift time"
+    default 5000
+    help
+      Default REST1 mode downshift down time in milliseconds.
+      Time after which sensor goes from REST1 to REST2 mode.
+
+config PMW3610_REST2_DOWNSHIFT_TIME_MS
+    int "PMW3610's default REST2 mode downshift time"
+    default 17000
+    help
+      Default REST2 mode downshift down time in milliseconds.
+      Time after which sensor goes from REST2 to REST3 mode.
+
+config PMW3610_REST1_SAMPLE_TIME_MS
+    int "PMW3610's sample time in REST1 stage"
+    default 40
+    # range 10 2550
+    help
+      Default REST1 mode sample period in millisecond
+
+config PMW3610_REST2_SAMPLE_TIME_MS
+    int "PMW3610's sample time in REST2 stage"
+    default 100
+    # range 10 2550
+    help
+      Default REST2 mode sample period in millisecond.
+
+config PMW3610_REST3_SAMPLE_TIME_MS
+    int "PMW3610's sample time in REST3 stage"
+    default 500
+    # range 10 2550
+    help
+      Default REST2 mode sample period in millisecond.
+
+module = PMW3610
+module-str = PMW3610
+source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
+
+endif #PMW3610
