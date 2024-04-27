@@ -2,6 +2,13 @@ PMW3610 driver implementation for ZMK
 
 This work is based on [ufan's zmk pixart sensor drivers](https://github.com/ufan/zmk/tree/support-trackpad) and [inorichi's zmk-pmw3610-driver](https://github.com/inorichi/zmk-pmw3610-driver).
 
+#### What is different to [inorichi's driver](https://github.com/inorichi/zmk-pmw3610-driver)
+- Compatible to be used on split peripheral shield. (major reason of all changes)
+- Replaced `CONFIG_PMW3610_ORIENTATION_*` with `CONFIG_PMW3610_SWAP_XY` and `PMW3610_INVERT_*`. Then now, it can use for building conventional palm-gripping mouse.
+- Features for scroll-mode, snipe-mode, and auto-layer no longer needed to be provided from sensor driver. Those settings is now configurable in keymap file with layer-based behavioral input listener module ([zmk-input-behavior-listener](https://github.com/badjeff/zmk-input-behavior-listener)), instead of setup static value in shield config files.
+- Seperating sampling rate and reporting rate. It reports accumulated XY axes displacement between data ready interrupts. You will still feeling lag and jumpy in noisy radio hell, but the cursor traction should being lossless, and predicable in exact terms.
+- Default to use power saving config. Applying shorter-than-default downshift time to PMW3610.
+
 ## Installation
 
 Include this project on ZMK's west manifest in `config/west.yml`:

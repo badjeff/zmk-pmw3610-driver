@@ -600,7 +600,7 @@ static int pmw3610_report_data(const struct device *dev) {
     }
 #endif
 
-    // divide to report value
+    // fetch report value
     int16_t rx = (int16_t)CLAMP(dx, INT16_MIN, INT16_MAX);
     int16_t ry = (int16_t)CLAMP(dy, INT16_MIN, INT16_MAX);
     bool have_x = rx != 0;
