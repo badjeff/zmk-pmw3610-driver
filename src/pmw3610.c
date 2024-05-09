@@ -13,7 +13,7 @@
 #include "pmw3610.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(adns9800, CONFIG_PMW3610_LOG_LEVEL);
+LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_LOG_LEVEL);
 
 //////// Sensor initialization steps definition //////////
 // init is done in non-blocking manner (i.e., async), a //
