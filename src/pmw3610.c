@@ -524,6 +524,13 @@ static void pmw3610_async_init(struct k_work *work) {
     }
 }
 
+#if CONFIG_PMW3610_ROTATE_DEG > 0 
+#include <math.h>
+
+#define SIN sinf((CONFIG_PMW3610_ROTATE_DEG * -3.1415926536f) / 180.0f)
+#define COS cosf((CONFIG_PMW3610_ROTATE_DEG * -3.1415926536f) / 180.0f)
+#endif
+
 static int pmw3610_report_data(const struct device *dev) {
     struct pixart_data *data = dev->data;
     const struct pixart_config *config = dev->config;
@@ -554,6 +561,14 @@ static int pmw3610_report_data(const struct device *dev) {
 
     int16_t x = TOINT16((buf[PMW3610_X_L_POS] + ((buf[PMW3610_XY_H_POS] & 0xF0) << 4)), 12);
     int16_t y = TOINT16((buf[PMW3610_Y_L_POS] + ((buf[PMW3610_XY_H_POS] & 0x0F) << 8)), 12);
+
+#if CONFIG_PMW3610_ROTATE_DEG > 0
+    float rotated_x = COS * x - SIN * y;
+    float rotated_y = SIN * x + COS * y;
+
+    x = rotated_x;
+    y = rotated_y;
+#endif
 
 #if IS_ENABLED(CONFIG_PMW3610_SWAP_XY)
     int16_t a = x;

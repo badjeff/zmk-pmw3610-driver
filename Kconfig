@@ -22,6 +22,10 @@ config PMW3610_INVERT_X
 config PMW3610_INVERT_Y
   bool "Invert the Y axis of PMW3610 sensor"
 
+config PMW3610_ROTATE_DEG
+  int "Rotate the input clockwise"
+  default 0
+
 config PMW3610_REPORT_INTERVAL_MIN
 	int "PMW3610's default minimum report rate"
 	default 0
