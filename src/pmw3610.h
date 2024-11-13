@@ -7,17 +7,8 @@
 extern "C" {
 #endif
 
-/* Timings (in us) used in SPI communication. Since MCU should not do other tasks during wait,
- * k_busy_wait is used instead of k_sleep */
-// - sub-us time is rounded to us, due to the limitation of k_busy_wait, see :
-// https://github.com/zephyrproject-rtos/zephyr/issues/6498
-#define T_NCS_SCLK 1     /* 120 ns (rounded to 1us) */
-#define T_SCLK_NCS_WR 10 /* 10 us */
-#define T_SRAD 4         /* 4 us */
-#define T_SRAD_MOTBR 4   /* same as T_SRAD */
-#define T_SRX 1          /* 250 ns (rounded to 1 us) */
-#define T_SWX 30         /* SWW: 30 us, SWR: 20 us */
-#define T_BEXIT 1        /* 250 ns (rounded to 1us)*/
+/* Timings (in us) used in SPI communication. */
+#define T_CLOCK_ON_DELAY_US 300
 
 /* Sensor registers (addresses) */
 #define PMW3610_REG_PRODUCT_ID 0x00

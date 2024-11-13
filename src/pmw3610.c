@@ -32,7 +32,7 @@ enum pmw3610_init_step {
 // - Since MCU is not involved in the sensor init process, i is allowed to do other tasks.
 //   Thus, k_sleep or delayed schedule can be used.
 static const int32_t async_init_delay[ASYNC_INIT_STEP_COUNT] = {
-    [ASYNC_INIT_STEP_POWER_UP] = 10,   // test shows > 5ms neede
+    [ASYNC_INIT_STEP_POWER_UP] = 10,   // >10ms needed
     [ASYNC_INIT_STEP_CLEAR_OB1] = 200, // 150 us required, test shows too short,
                                        // also power-up reset is added in this step, thus using 50 ms
     [ASYNC_INIT_STEP_CHECK_OB1] = 50,  // 10 ms required in spec,
@@ -56,212 +56,40 @@ static int (*const async_init_fn[ASYNC_INIT_STEP_COUNT])(const struct device *de
 
 //////// Function definitions //////////
 
-// checked and keep
-static int spi_cs_ctrl(const struct device *dev, bool enable) {
-    const struct pixart_config *config = dev->config;
-    int err;
-
-    if (!enable) {
-        k_busy_wait(T_NCS_SCLK);
-    }
-
-    err = gpio_pin_set_dt(&config->cs_gpio, (int)enable);
-    if (err) {
-        LOG_ERR("SPI CS ctrl failed");
-    }
-
-    if (enable) {
-        k_busy_wait(T_NCS_SCLK);
-    }
-
-    return err;
+static int pmw3610_read(const struct device *dev, uint8_t addr, uint8_t *value, uint8_t len) {
+	const struct pixart_config *cfg = dev->config;
+	const struct spi_buf tx_buf = { .buf = &addr, .len = sizeof(addr) };
+	const struct spi_buf_set tx = { .buffers = &tx_buf, .count = 1 };
+	struct spi_buf rx_buf[] = {
+		{ .buf = NULL, .len = sizeof(addr), },
+		{ .buf = value, .len = len, },
+	};
+	const struct spi_buf_set rx = { .buffers = rx_buf, .count = ARRAY_SIZE(rx_buf) };
+	return spi_transceive_dt(&cfg->spi, &tx, &rx);
 }
 
-// checked and keep
-static int reg_read(const struct device *dev, uint8_t reg, uint8_t *buf) {
-    int err;
-    /* struct pixart_data *data = dev->data; */
-    const struct pixart_config *config = dev->config;
-
-    __ASSERT_NO_MSG((reg & SPI_WRITE_BIT) == 0);
-
-    err = spi_cs_ctrl(dev, true);
-    if (err) {
-        return err;
-    }
-
-    /* Write register address. */
-    const struct spi_buf tx_buf = {.buf = &reg, .len = 1};
-    const struct spi_buf_set tx = {.buffers = &tx_buf, .count = 1};
-
-    err = spi_write_dt(&config->bus, &tx);
-    if (err) {
-        LOG_ERR("Reg read failed on SPI write");
-        return err;
-    }
-
-    k_busy_wait(T_SRAD);
-
-    /* Read register value. */
-    struct spi_buf rx_buf = {
-        .buf = buf,
-        .len = 1,
-    };
-    const struct spi_buf_set rx = {
-        .buffers = &rx_buf,
-        .count = 1,
-    };
-
-    err = spi_read_dt(&config->bus, &rx);
-    if (err) {
-        LOG_ERR("Reg read failed on SPI read");
-        return err;
-    }
-
-    err = spi_cs_ctrl(dev, false);
-    if (err) {
-        return err;
-    }
-
-    k_busy_wait(T_SRX);
-
-    return 0;
+static int pmw3610_read_reg(const struct device *dev, uint8_t addr, uint8_t *value) {
+	return pmw3610_read(dev, addr, value, 1);
 }
 
-// primitive write without enable/disable spi clock on the sensor
-static int _reg_write(const struct device *dev, uint8_t reg, uint8_t val) {
-    int err;
-    const struct pixart_config *config = dev->config;
-
-    __ASSERT_NO_MSG((reg & SPI_WRITE_BIT) == 0);
-
-    err = spi_cs_ctrl(dev, true);
-    if (err) {
-        return err;
-    }
-
-    uint8_t buf[] = {SPI_WRITE_BIT | reg, val};
-    const struct spi_buf tx_buf = {.buf = buf, .len = ARRAY_SIZE(buf)};
-    const struct spi_buf_set tx = {.buffers = &tx_buf, .count = 1};
-
-    err = spi_write_dt(&config->bus, &tx);
-    if (err) {
-        LOG_ERR("Reg write failed on SPI write");
-        return err;
-    }
-
-    k_busy_wait(T_SCLK_NCS_WR);
-
-    err = spi_cs_ctrl(dev, false);
-    if (err) {
-        return err;
-    }
-
-    k_busy_wait(T_SWX);
-
-    return 0;
+static int pmw3610_write_reg(const struct device *dev, uint8_t addr, uint8_t value) {
+	const struct pixart_config *cfg = dev->config;
+	uint8_t write_buf[] = {addr | SPI_WRITE_BIT, value};
+	const struct spi_buf tx_buf = { .buf = write_buf, .len = sizeof(write_buf), };
+	const struct spi_buf_set tx = { .buffers = &tx_buf, .count = 1, };
+	return spi_write_dt(&cfg->spi, &tx);
 }
 
-static int reg_write(const struct device *dev, uint8_t reg, uint8_t val) {
-    int err;
+static int pmw3610_write(const struct device *dev, uint8_t reg, uint8_t val) {
+	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
+	k_sleep(K_USEC(T_CLOCK_ON_DELAY_US));
 
-    // enable spi clock
-    err = _reg_write(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
+    int err = pmw3610_write_reg(dev, reg, val);
     if (unlikely(err != 0)) {
         return err;
     }
-
-    // write the target register
-    err = _reg_write(dev, reg, val);
-    if (unlikely(err != 0)) {
-        return err;
-    }
-
-    // disable spi clock to save power
-    err = _reg_write(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-    if (unlikely(err != 0)) {
-        return err;
-    }
-
-    return 0;
-}
-
-static int motion_burst_read(const struct device *dev, uint8_t *buf, size_t burst_size) {
-    int err;
-    /* struct pixart_data *data = dev->data; */
-    const struct pixart_config *config = dev->config;
-
-    __ASSERT_NO_MSG(burst_size <= PMW3610_MAX_BURST_SIZE);
-
-    err = spi_cs_ctrl(dev, true);
-    if (err) {
-        return err;
-    }
-
-    /* Send motion burst address */
-    uint8_t reg_buf[] = {PMW3610_REG_MOTION_BURST};
-    const struct spi_buf tx_buf = {.buf = reg_buf, .len = ARRAY_SIZE(reg_buf)};
-    const struct spi_buf_set tx = {.buffers = &tx_buf, .count = 1};
-
-    err = spi_write_dt(&config->bus, &tx);
-    if (err) {
-        LOG_ERR("Motion burst failed on SPI write");
-        return err;
-    }
-
-    k_busy_wait(T_SRAD_MOTBR);
-
-    const struct spi_buf rx_buf = {
-        .buf = buf,
-        .len = burst_size,
-    };
-    const struct spi_buf_set rx = {.buffers = &rx_buf, .count = 1};
-
-    err = spi_read_dt(&config->bus, &rx);
-    if (err) {
-        LOG_ERR("Motion burst failed on SPI read");
-        return err;
-    }
-
-    err = spi_cs_ctrl(dev, false);
-    if (err) {
-        return err;
-    }
-
-    /* Terminate burst */
-    k_busy_wait(T_BEXIT);
-
-    return 0;
-}
-
-/** Writing an array of registers in sequence, used in power-up register initialization and running
- * mode switching */
-static int burst_write(const struct device *dev, const uint8_t *addr, const uint8_t *buf,
-                       size_t size) {
-    int err;
-
-    // enable spi clock
-    err = _reg_write(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
-    if (unlikely(err != 0)) {
-        return err;
-    }
-
-    /* Write data */
-    for (size_t i = 0; i < size; i++) {
-        err = _reg_write(dev, addr[i], buf[i]);
-
-        if (err) {
-            LOG_ERR("Burst write failed on SPI write (data)");
-            return err;
-        }
-    }
-
-    // disable spi clock to save power
-    err = _reg_write(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-    if (unlikely(err != 0)) {
-        return err;
-    }
-
+    
+    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
     return 0;
 }
 
@@ -285,7 +113,21 @@ static int set_cpi(const struct device *dev, uint32_t cpi) {
     /* set the cpi */
     uint8_t addr[] = {0x7F, PMW3610_REG_RES_STEP, 0x7F};
     uint8_t data[] = {0xFF, value, 0x00};
-    int err = burst_write(dev, addr, data, 3);
+
+	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
+	k_sleep(K_USEC(T_CLOCK_ON_DELAY_US));
+
+    /* Write data */
+    int err;
+    for (size_t i = 0; i < sizeof(data); i++) {
+        err = pmw3610_write_reg(dev, addr[i], data[i]);
+        if (err) {
+            LOG_ERR("Burst write failed on SPI write (data)");
+            break;
+        }
+    }
+    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
+
     if (err) {
         LOG_ERR("Failed to set CPI");
         return err;
@@ -307,7 +149,7 @@ static int set_sample_time(const struct device *dev, uint8_t reg_addr, uint32_t 
     LOG_INF("Set sample time to %u ms (reg value: 0x%x)", sample_time, value);
 
     /* The sample time is (reg_value * mintime ) ms. 0x00 is rounded to 0x1 */
-    int err = reg_write(dev, reg_addr, value);
+    int err = pmw3610_write(dev, reg_addr, value);
     if (err) {
         LOG_ERR("Failed to change sample time");
     }
@@ -367,7 +209,7 @@ static int set_downshift_time(const struct device *dev, uint8_t reg_addr, uint32
 
     LOG_INF("Set downshift time to %u ms (reg value 0x%x)", time, value);
 
-    int err = reg_write(dev, reg_addr, value);
+    int err = pmw3610_write(dev, reg_addr, value);
     if (err) {
         LOG_ERR("Failed to change downshift time");
     }
@@ -385,33 +227,20 @@ static void set_interrupt(const struct device *dev, const bool en) {
 }
 
 static int pmw3610_async_init_power_up(const struct device *dev) {
-    // struct pixart_data *data = dev->data;
-    // const struct pixart_config *config = dev->config;
-    // while (1) {
-    //     LOG_DBG("###### %d", 0);
-    //     gpio_pin_set_dt(&config->cs_gpio, (int)0);
-    //     k_msleep(1000);
-    //     LOG_DBG("###### %d", 1);
-    //     gpio_pin_set_dt(&config->cs_gpio, (int)1);
-    //     k_msleep(1000);
-    // }
-    // return 0;
-
-    // ensure that the SPI port is reset
-    spi_cs_ctrl(dev, false);
-    spi_cs_ctrl(dev, true);
-
-    /* not required in datashet, but added any way to have a clear state */
-    return reg_write(dev, PMW3610_REG_POWER_UP_RESET, PMW3610_POWERUP_CMD_RESET);
+	int ret = pmw3610_write_reg(dev, PMW3610_REG_POWER_UP_RESET, PMW3610_POWERUP_CMD_RESET);
+    if (ret < 0) {
+        return ret;
+    }
+    return 0;
 }
 
 static int pmw3610_async_init_clear_ob1(const struct device *dev) {
-    return reg_write(dev, PMW3610_REG_OBSERVATION, 0x00);
+    return pmw3610_write(dev, PMW3610_REG_OBSERVATION, 0x00);
 }
 
 static int pmw3610_async_init_check_ob1(const struct device *dev) {
     uint8_t value;
-    int err = reg_read(dev, PMW3610_REG_OBSERVATION, &value);
+    int err = pmw3610_read_reg(dev, PMW3610_REG_OBSERVATION, &value);
     if (err) {
         LOG_ERR("Can't do self-test");
         return err;
@@ -423,7 +252,7 @@ static int pmw3610_async_init_check_ob1(const struct device *dev) {
     }
 
     uint8_t product_id = 0x01;
-    err = reg_read(dev, PMW3610_REG_PRODUCT_ID, &product_id);
+    err = pmw3610_read_reg(dev, PMW3610_REG_PRODUCT_ID, &product_id);
     if (err) {
         LOG_ERR("Cannot obtain product id");
         return err;
@@ -444,7 +273,7 @@ static int pmw3610_async_init_configure(const struct device *dev) {
     // clear motion registers first (required in datasheet)
     for (uint8_t reg = 0x02; (reg <= 0x05) && !err; reg++) {
         uint8_t buf[1];
-        err = reg_read(dev, reg, buf);
+        err = pmw3610_read_reg(dev, reg, buf);
     }
 
     if (!err) {
@@ -459,7 +288,7 @@ static int pmw3610_async_init_configure(const struct device *dev) {
     //     if (config->force_awake) {
     //         perf |= 0xF0;
     //     }
-    //     err = reg_write(dev, PMW3610_REG_PERFORMANCE, perf);
+    //     err = pmw3610_write(dev, PMW3610_REG_PERFORMANCE, perf);
     //     LOG_INF("Set performance register (reg value 0x%x)", perf);
     // }
 
@@ -543,7 +372,7 @@ static int pmw3610_report_data(const struct device *dev) {
     int64_t now = k_uptime_get();
 #endif
 
-    int err = motion_burst_read(dev, buf, sizeof(buf));
+	int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, sizeof(buf));
     if (err) {
         return err;
     }
@@ -571,11 +400,11 @@ static int pmw3610_report_data(const struct device *dev) {
     int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8) 
                     + buf[PMW3610_SHUTTER_L_POS];
     if (data->sw_smart_flag && shutter < 45) {
-        reg_write(dev, 0x32, 0x00);
+        pmw3610_write(dev, 0x32, 0x00);
         data->sw_smart_flag = false;
     }
     if (!data->sw_smart_flag && shutter > 45) {
-        reg_write(dev, 0x32, 0x80);
+        pmw3610_write(dev, 0x32, 0x80);
         data->sw_smart_flag = true;
     }
 #endif
@@ -672,6 +501,11 @@ static int pmw3610_init(const struct device *dev) {
     const struct pixart_config *config = dev->config;
     int err;
 
+	if (!spi_is_ready_dt(&config->spi)) {
+		LOG_ERR("%s is not ready", config->spi.bus->name);
+		return -ENODEV;
+	}
+
     // init device pointer
     data->dev = dev;
 
@@ -680,18 +514,6 @@ static int pmw3610_init(const struct device *dev) {
 
     // init trigger handler work
     k_work_init(&data->trigger_work, pmw3610_work_callback);
-
-    // check readiness of cs gpio pin and init it to inactive
-    if (!device_is_ready(config->cs_gpio.port)) {
-        LOG_ERR("SPI CS device not ready");
-        return -ENODEV;
-    }
-
-    err = gpio_pin_configure_dt(&config->cs_gpio, GPIO_OUTPUT_INACTIVE);
-    if (err) {
-        LOG_ERR("Cannot configure SPI CS GPIO");
-        return err;
-    }
 
     // init irq routine
     err = pmw3610_init_irq(dev);
@@ -766,28 +588,15 @@ static const struct sensor_driver_api pmw3610_driver_api = {
     .attr_set = pmw3610_attr_set,
 };
 
+#define PMW3610_SPI_MODE (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) | SPI_MODE_CPOL | \
+                        SPI_MODE_CPHA | SPI_TRANSFER_MSB)
+
 #define PMW3610_DEFINE(n)                                                                          \
     static struct pixart_data data##n;                                                             \
     static const struct pixart_config config##n = {                                                \
+		.spi = SPI_DT_SPEC_INST_GET(n, PMW3610_SPI_MODE, 0),		                               \
         .irq_gpio = GPIO_DT_SPEC_INST_GET(n, irq_gpios),                                           \
         .cpi = DT_PROP(DT_DRV_INST(n), cpi),                                                       \
-        .bus =                                                                                     \
-            {                                                                                      \
-                .bus = DEVICE_DT_GET(DT_INST_BUS(n)),                                              \
-                .config =                                                                          \
-                    {                                                                              \
-                        .frequency = DT_INST_PROP(n, spi_max_frequency),                           \
-                        .operation =                                                               \
-                            ( \
-                              SPI_WORD_SET(8) \
-                            | SPI_TRANSFER_MSB \
-                            | SPI_MODE_CPOL \
-                            | SPI_MODE_CPHA \
-                            ), \
-                        .slave = DT_INST_REG_ADDR(n),                                              \
-                    },                                                                             \
-            },                                                                                     \
-        .cs_gpio = SPI_CS_GPIOS_DT_SPEC_GET(DT_DRV_INST(n)),                                       \
         .evt_type = DT_PROP(DT_DRV_INST(n), evt_type),                                             \
         .x_input_code = DT_PROP(DT_DRV_INST(n), x_input_code),                                     \
         .y_input_code = DT_PROP(DT_DRV_INST(n), y_input_code),                                     \
