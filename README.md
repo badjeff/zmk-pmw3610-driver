@@ -3,13 +3,13 @@ PMW3610 driver implementation for ZMK
 This work is based on [ufan's zmk pixart sensor drivers](https://github.com/ufan/zmk/tree/support-trackpad), [inorichi's zmk-pmw3610-driver](https://github.com/inorichi/zmk-pmw3610-driver), and [Zephyr PMW3610 driver](https://github.com/zephyrproject-rtos/zephyr/blob/main/drivers/input/input_pmw3610.c).
 
 #### What is different to [inorichi's driver](https://github.com/inorichi/zmk-pmw3610-driver)
-- Compatible to be used on split peripheral shield with [zmk-split-peripheral-input-relay](https://github.com/badjeff/zmk-split-peripheral-input-relay) module.
+- Compatible to be used on split peripheral shield.
 - Replaced `CONFIG_PMW3610_ORIENTATION_*` with `CONFIG_PMW3610_SWAP_XY` and `PMW3610_INVERT_*`. Then now, it can use for building conventional palm-gripping mouse.
 - Moved `CONFIG_PMW3610_CPI` to device tree node `.dts/.overlay`. It is now allowed to setup diffeent config for multi-sensor on single shield. In case of building typical mouse shield, we use one movment sensor on bottom, and another sensor for scrolling on top. Those settings could be distinguishable.
-- Features for scroll-mode, snipe-mode, and auto-layer are no longer needed to be provided from sensor driver. Those settings is now configurable in keymap with layer-based behavioral input listener module ([zmk-input-behavior-listener](https://github.com/badjeff/zmk-input-behavior-listener)), instead of setup static value in shield config files.
+- Features for scroll-mode, snipe-mode, and auto-layer are no longer needed to be provided from sensor driver. Those settings is now configurable in keymap with layer-based `zmk,input-listener`, instead of setup static value in shield config files.
 - Seperating sampling rate and reporting rate. It reports accumulated XY axes displacement between data ready interrupts. You will still feeling lag and jumpy in noisy radio hell, but the cursor traction should being lossless, and predicable in exact terms.
 - Default to use power saving config. Applying shorter-than-default downshift time to PMW3610.
-- Deprecated manual *chip-select*. Refactored to use Zephyr's `spi_transceive_dt()`.
+- Deprecated manual *chip-select*. Refactored to use Zephyr's `spi_transceive_dt()`. That allow the sensor could be attacted to a shared SPI bus, works along with others SPI peripherals, such as display module.
 
 ## Installation
 
