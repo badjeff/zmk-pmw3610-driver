@@ -22,6 +22,13 @@ config PMW3610_INVERT_X
 config PMW3610_INVERT_Y
   bool "Invert the Y axis of PMW3610 sensor"
 
+config PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS
+  int "Extra power up init delay (ms)"
+  default 0
+  help
+    Default minimum init power up delay is 10ms.
+    Use this config to postpone init power up sequence if needs longer bootup time.
+
 config PMW3610_REPORT_INTERVAL_MIN
 	int "PMW3610's default minimum report rate"
 	default 0
