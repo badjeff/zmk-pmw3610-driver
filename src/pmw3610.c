@@ -340,6 +340,23 @@ static void pmw3610_async_init(struct k_work *work) {
     data->err = async_init_fn[data->async_init_step](dev);
     if (data->err) {
         LOG_ERR("PMW3610 initialization failed in step %d", data->async_init_step);
+
+        /* If we haven’t exceeded our retry budget, reset to step 0 and try again */
+        if (data->retries < CONFIG_PMW3610_INIT_RETRY_COUNT) {
+            data->retries++;
+            data->async_init_step = 0;
+            LOG_WRN("Retrying PMW3610 init (attempt %d/%d) in %d ms...",
+                    data->retries,
+                    CONFIG_PMW3610_INIT_RETRY_COUNT,
+                    CONFIG_PMW3610_INIT_RETRY_DELAY_MS);
+
+            /* Schedule the next attempt after a delay */
+            k_work_schedule(&data->init_work,
+                            K_MSEC(CONFIG_PMW3610_INIT_RETRY_DELAY_MS));
+        } else {
+            LOG_ERR("PMW3610 init failed after %d retries; giving up.", data->retries);
+            /* At this point, we do NOT re-schedule, so init stops. data->ready stays false */
+        }
     } else {
         data->async_init_step++;
 
