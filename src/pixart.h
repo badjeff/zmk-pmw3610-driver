@@ -29,6 +29,7 @@ struct pixart_data {
     bool                         ready; // whether init is finished successfully
     bool                         last_read_burst;
     int                          err; // error code during async init
+    int                          retries; // number of retries of the initialization sequence
 };
 
 // device config data structure
