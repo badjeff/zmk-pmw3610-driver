@@ -99,9 +99,4 @@ CONFIG_PMW3610=y
 # CONFIG_PMW3610_INVERT_Y=y
 # CONFIG_PMW3610_REPORT_INTERVAL_MIN=12
 # CONFIG_PMW3610_LOG_LEVEL_DBG=y
-# CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS=300 // <--see Troubleshooting
 ```
-
-## Troubleshooting
-
-If you are getting `Incorrect product id 0xFF (expecting 0x3E)!` on `nice_nano_v2` board from the log, you'd want to apply `CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS=1000` in your shield .conf/.overlay file. Due to this driver doesn't offer module dependancy setting, that would ensure external power (to enable VCC pin on board) is ready, the `CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS` would use to add extra one second delay of power up.
