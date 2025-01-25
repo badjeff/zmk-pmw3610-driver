@@ -231,21 +231,7 @@ static int pmw3610_async_init_power_up(const struct device *dev) {
     if (ret < 0) {
         return ret;
     }
-
-    /* Poll for sensor ready.*/
-    for (int i = 0; i < 5000; i++) {
-        uint8_t product_id = 0;
-        ret = pmw3610_read_reg(dev, PMW3610_REG_PRODUCT_ID, &product_id);
-        if (ret == 0 && product_id == PMW3610_PRODUCT_ID) {
-            LOG_INF("PMW3610 awake, product ID confirmed: 0x%02x", product_id);
-            return 0;
-        }
-        k_sleep(K_MSEC(1));
-    }
-
-    /* If we never get the expected ID, fail out here. */
-    LOG_ERR("PMW3610 did not respond with correct product ID after 5000 ms");
-    return -EIO;
+    return 0;
 }
 
 static int pmw3610_async_init_clear_ob1(const struct device *dev) {
