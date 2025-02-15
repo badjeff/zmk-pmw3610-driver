@@ -58,6 +58,8 @@ Update `board.overlay` adding the necessary bits (update the pins for your board
     };
 };
 
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
 &spi0 {
     status = "okay";
     compatible = "nordic,nrf-spim";
