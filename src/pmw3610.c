@@ -649,8 +649,10 @@ static int pmw3610_pm_action(const struct device *dev, enum pm_device_action act
 DT_INST_FOREACH_STATUS_OKAY(PMW3610_DEFINE)
 
 
+#define GET_PMW3610_DEV(node_id) DEVICE_DT_GET(node_id),
+
 static const struct device *pmw3610_devs[] = {
-    DT_FOREACH_STATUS_OKAY(pixart_pmw3610, DEVICE_DT_GET)
+    DT_FOREACH_STATUS_OKAY(pixart_pmw3610, GET_PMW3610_DEV)
 };
 
 static int on_activity_state(const zmk_event_t *eh) {
