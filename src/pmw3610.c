@@ -11,6 +11,7 @@
 #include <zephyr/input/input.h>
 #include <zephyr/pm/device.h>
 #include <zmk/keymap.h>
+#include <zmk/events/activity_state_changed.h>
 #include "pmw3610.h"
 
 #include <zephyr/logging/log.h>
@@ -94,7 +95,7 @@ static int pmw3610_write(const struct device *dev, uint8_t reg, uint8_t val) {
     return 0;
 }
 
-static int set_cpi(const struct device *dev, uint32_t cpi) {
+static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi) {
     /* Set resolution with CPI step of 200 cpi
      * 0x1: 200 cpi (minimum cpi)
      * 0x2: 400 cpi
@@ -138,7 +139,7 @@ static int set_cpi(const struct device *dev, uint32_t cpi) {
 }
 
 /* Set sampling rate in each mode (in ms) */
-static int set_sample_time(const struct device *dev, uint8_t reg_addr, uint32_t sample_time) {
+static int pmw3610_set_sample_time(const struct device *dev, uint8_t reg_addr, uint32_t sample_time) {
     uint32_t maxtime = 2550;
     uint32_t mintime = 10;
     if ((sample_time > maxtime) || (sample_time < mintime)) {
@@ -161,7 +162,7 @@ static int set_sample_time(const struct device *dev, uint8_t reg_addr, uint32_t 
 /* Set downshift time in ms. */
 // NOTE: The unit of run-mode downshift is related to pos mode rate, which is hard coded to be 4 ms
 // The pos-mode rate is configured in pmw3610_async_init_configure
-static int set_downshift_time(const struct device *dev, uint8_t reg_addr, uint32_t time) {
+static int pmw3610_set_downshift_time(const struct device *dev, uint8_t reg_addr, uint32_t time) {
     uint32_t maxtime;
     uint32_t mintime;
 
@@ -218,7 +219,37 @@ static int set_downshift_time(const struct device *dev, uint8_t reg_addr, uint32
     return err;
 }
 
-static int set_interrupt(const struct device *dev, const bool en) {
+static int pmw3610_set_performance(const struct device *dev, bool enabled) {
+    const struct pixart_config *config = dev->config;
+    int err = 0;
+
+    if (config->force_awake) {
+        uint8_t value;
+        err = pmw3610_read_reg(dev, PMW3610_REG_PERFORMANCE, &value);
+        if (err) {
+            LOG_ERR("Can't read ref-performance %d", err);
+            return err;
+        }
+        LOG_INF("Get performance register (reg value 0x%x)", value);
+
+        uint8_t perf = value & 0x0F; // reset bit[3..0] to 0x0 (normal operation)
+        if (enabled) {
+            perf |= 0xF0; // set bit[3..0] to 0xF (force awake)
+        }
+        if (perf != value) {
+            err = pmw3610_write(dev, PMW3610_REG_PERFORMANCE, perf);
+            if (err) {
+                LOG_ERR("Can't write performance register %d", err);
+                return err;
+            }
+            LOG_INF("Set performance register (reg value 0x%x)", perf);
+        }
+    }
+
+    return err;
+}
+
+static int pmw3610_set_interrupt(const struct device *dev, const bool en) {
     const struct pixart_config *config = dev->config;
     int ret = gpio_pin_interrupt_configure_dt(&config->irq_gpio,
                                               en ? GPIO_INT_LEVEL_ACTIVE : GPIO_INT_DISABLE);
@@ -279,49 +310,41 @@ static int pmw3610_async_init_configure(const struct device *dev) {
     }
 
     if (!err) {
-        err = set_cpi(dev, config->cpi);
-    }
-
-    // if (!err) {
-    //     uint8_t perf = 0x00;
-    //     if (config->pull_rate_250) {
-    //         perf |= 0x0D;
-    //     }
-    //     if (config->force_awake) {
-    //         perf |= 0xF0;
-    //     }
-    //     err = pmw3610_write(dev, PMW3610_REG_PERFORMANCE, perf);
-    //     LOG_INF("Set performance register (reg value 0x%x)", perf);
-    // }
-
-    if (!err) {
-        err = set_downshift_time(dev, PMW3610_REG_RUN_DOWNSHIFT,
-                                 CONFIG_PMW3610_RUN_DOWNSHIFT_TIME_MS);
+        err = pmw3610_set_performance(dev, true);
     }
 
     if (!err) {
-        err = set_downshift_time(dev, PMW3610_REG_REST1_DOWNSHIFT,
-                                 CONFIG_PMW3610_REST1_DOWNSHIFT_TIME_MS);
+        err = pmw3610_set_cpi(dev, config->cpi);
     }
 
     if (!err) {
-        err = set_downshift_time(dev, PMW3610_REG_REST2_DOWNSHIFT,
-                                 CONFIG_PMW3610_REST2_DOWNSHIFT_TIME_MS);
+        err = pmw3610_set_downshift_time(dev, PMW3610_REG_RUN_DOWNSHIFT,
+                                         CONFIG_PMW3610_RUN_DOWNSHIFT_TIME_MS);
     }
 
     if (!err) {
-        err = set_sample_time(dev, PMW3610_REG_REST1_RATE,
-                              CONFIG_PMW3610_REST1_SAMPLE_TIME_MS);
+        err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST1_DOWNSHIFT,
+                                         CONFIG_PMW3610_REST1_DOWNSHIFT_TIME_MS);
     }
 
     if (!err) {
-        err = set_sample_time(dev, PMW3610_REG_REST2_RATE,
-                              CONFIG_PMW3610_REST2_SAMPLE_TIME_MS);
+        err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST2_DOWNSHIFT,
+                                         CONFIG_PMW3610_REST2_DOWNSHIFT_TIME_MS);
     }
 
     if (!err) {
-        err = set_sample_time(dev, PMW3610_REG_REST3_RATE,
-                              CONFIG_PMW3610_REST3_SAMPLE_TIME_MS);
+        err = pmw3610_set_sample_time(dev, PMW3610_REG_REST1_RATE,
+                                      CONFIG_PMW3610_REST1_SAMPLE_TIME_MS);
+    }
+
+    if (!err) {
+        err = pmw3610_set_sample_time(dev, PMW3610_REG_REST2_RATE,
+                                      CONFIG_PMW3610_REST2_SAMPLE_TIME_MS);
+    }
+
+    if (!err) {
+        err = pmw3610_set_sample_time(dev, PMW3610_REG_REST3_RATE,
+                                      CONFIG_PMW3610_REST3_SAMPLE_TIME_MS);
     }
 
     if (err) {
@@ -348,7 +371,7 @@ static void pmw3610_async_init(struct k_work *work) {
         if (data->async_init_step == ASYNC_INIT_STEP_COUNT) {
             data->ready = true; // sensor is ready to work
             LOG_INF("PMW3610 initialized");
-            set_interrupt(dev, true);
+            pmw3610_set_interrupt(dev, true);
         } else {
             k_work_schedule(&data->init_work, K_MSEC(async_init_delay[data->async_init_step]));
         }
@@ -458,7 +481,7 @@ static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callba
                                   uint32_t pins) {
     struct pixart_data *data = CONTAINER_OF(cb, struct pixart_data, irq_gpio_cb);
     const struct device *dev = data->dev;
-    set_interrupt(dev, false);
+    pmw3610_set_interrupt(dev, false);
     k_work_submit(&data->trigger_work);
 }
 
@@ -466,7 +489,7 @@ static void pmw3610_work_callback(struct k_work *work) {
     struct pixart_data *data = CONTAINER_OF(work, struct pixart_data, trigger_work);
     const struct device *dev = data->dev;
     pmw3610_report_data(dev);
-    set_interrupt(dev, true);
+    pmw3610_set_interrupt(dev, true);
 }
 
 static int pmw3610_init_irq(const struct device *dev) {
@@ -551,31 +574,31 @@ static int pmw3610_attr_set(const struct device *dev, enum sensor_channel chan,
 
     switch ((uint32_t)attr) {
     case PMW3610_ATTR_CPI:
-        err = set_cpi(dev, PMW3610_SVALUE_TO_CPI(*val));
+        err = pmw3610_set_cpi(dev, PMW3610_SVALUE_TO_CPI(*val));
         break;
 
     case PMW3610_ATTR_RUN_DOWNSHIFT_TIME:
-        err = set_downshift_time(dev, PMW3610_REG_RUN_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
+        err = pmw3610_set_downshift_time(dev, PMW3610_REG_RUN_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
     case PMW3610_ATTR_REST1_DOWNSHIFT_TIME:
-        err = set_downshift_time(dev, PMW3610_REG_REST1_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
+        err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST1_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
     case PMW3610_ATTR_REST2_DOWNSHIFT_TIME:
-        err = set_downshift_time(dev, PMW3610_REG_REST2_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
+        err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST2_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
     case PMW3610_ATTR_REST1_SAMPLE_TIME:
-        err = set_sample_time(dev, PMW3610_REG_REST1_RATE, PMW3610_SVALUE_TO_TIME(*val));
+        err = pmw3610_set_sample_time(dev, PMW3610_REG_REST1_RATE, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
     case PMW3610_ATTR_REST2_SAMPLE_TIME:
-        err = set_sample_time(dev, PMW3610_REG_REST2_RATE, PMW3610_SVALUE_TO_TIME(*val));
+        err = pmw3610_set_sample_time(dev, PMW3610_REG_REST2_RATE, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
     case PMW3610_ATTR_REST3_SAMPLE_TIME:
-        err = set_sample_time(dev, PMW3610_REG_REST3_RATE, PMW3610_SVALUE_TO_TIME(*val));
+        err = pmw3610_set_sample_time(dev, PMW3610_REG_REST3_RATE, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
     default:
@@ -595,9 +618,9 @@ static const struct sensor_driver_api pmw3610_driver_api = {
 static int pmw3610_pm_action(const struct device *dev, enum pm_device_action action) {
     switch (action) {
     case PM_DEVICE_ACTION_SUSPEND:
-        return set_interrupt(dev, false);
+        return pmw3610_set_interrupt(dev, false);
     case PM_DEVICE_ACTION_RESUME:
-        return set_interrupt(dev, true);
+        return pmw3610_set_interrupt(dev, true);
     default:
         return -ENOTSUP;
     }
@@ -617,9 +640,34 @@ static int pmw3610_pm_action(const struct device *dev, enum pm_device_action act
         .evt_type = DT_PROP(DT_DRV_INST(n), evt_type),                                             \
         .x_input_code = DT_PROP(DT_DRV_INST(n), x_input_code),                                     \
         .y_input_code = DT_PROP(DT_DRV_INST(n), y_input_code),                                     \
+        .force_awake = DT_PROP(DT_DRV_INST(n), force_awake),                                       \
     };                                                                                             \
     PM_DEVICE_DT_INST_DEFINE(n, pmw3610_pm_action);                                                \
     DEVICE_DT_INST_DEFINE(n, pmw3610_init, NULL, &data##n, &config##n, POST_KERNEL,                \
                           CONFIG_INPUT_PMW3610_INIT_PRIORITY, &pmw3610_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(PMW3610_DEFINE)
+
+
+static const struct device *pmw3610_devs[] = {
+    DT_FOREACH_STATUS_OKAY(pixart_pmw3610, DEVICE_DT_GET)
+};
+
+static int on_activity_state(const zmk_event_t *eh) {
+    struct zmk_activity_state_changed *state_ev = as_zmk_activity_state_changed(eh);
+
+    if (!state_ev) {
+        LOG_WRN("NO EVENT, leaving early");
+        return 0;
+    }
+
+    bool enable = state_ev->state == ZMK_ACTIVITY_ACTIVE ? 1 : 0;
+    for (size_t i = 0; i < ARRAY_SIZE(pmw3610_devs); i++) {
+        pmw3610_set_performance(pmw3610_devs[i], enable);
+    }
+
+    return 0;
+}
+
+ZMK_LISTENER(zmk_pmw3610_idle_sleeper, on_activity_state);
+ZMK_SUBSCRIPTION(zmk_pmw3610_idle_sleeper, zmk_activity_state_changed);

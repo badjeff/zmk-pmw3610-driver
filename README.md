@@ -78,6 +78,11 @@ Update `board.overlay` adding the necessary bits (update the pins for your board
         evt-type = <INPUT_EV_REL>;
         x-input-code = <INPUT_REL_X>;
         y-input-code = <INPUT_REL_Y>;
+
+        force-awake;
+        /* keep the sensor awake while ZMK activity state is ACTIVE,
+           fallback to normal downshift mode after ZMK goes into IDLE / SLEEP mode.
+           thus, the sensor would be a `wakeup-source` */
     };
 };
 

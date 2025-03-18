@@ -22,3 +22,5 @@ properties:
   y-input-code:
     type: int
     required: true
+  force-awake:
+    type: boolean
