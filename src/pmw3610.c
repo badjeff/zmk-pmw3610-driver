@@ -645,7 +645,7 @@ static int pmw3610_pm_action(const struct device *dev, enum pm_device_action act
         .force_awake = DT_PROP(DT_DRV_INST(n), force_awake),                                       \
     };                                                                                             \
     PM_DEVICE_DT_INST_DEFINE(n, pmw3610_pm_action);                                                \
-    DEVICE_DT_INST_DEFINE(n, pmw3610_init, NULL, &data##n, &config##n, POST_KERNEL,                \
+    DEVICE_DT_INST_DEFINE(n, pmw3610_init, PM_DEVICE_DT_INST_GET(n), &data##n, &config##n, POST_KERNEL,                \
                           CONFIG_INPUT_PMW3610_INIT_PRIORITY, &pmw3610_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(PMW3610_DEFINE)
