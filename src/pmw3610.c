@@ -397,7 +397,7 @@ static int pmw3610_report_data(const struct device *dev) {
     int64_t now = k_uptime_get();
 #endif
 
-	int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, sizeof(buf));
+	int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
     if (err) {
         return err;
     }
