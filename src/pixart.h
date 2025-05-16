@@ -27,7 +27,6 @@ struct pixart_data {
     int                          async_init_step;
 
     bool                         ready; // whether init is finished successfully
-    bool                         last_read_burst;
     int                          err; // error code during async init
 };
 
