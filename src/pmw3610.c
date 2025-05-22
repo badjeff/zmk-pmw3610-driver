@@ -244,6 +244,7 @@ static int pmw3610_set_performance(const struct device *dev, bool enabled) {
             }
             LOG_INF("Set performance register (reg value 0x%x)", perf);
         }
+        LOG_INF("%s performance mode", enabled ? "enable" : "disable");
     }
 
     return err;
@@ -615,20 +616,19 @@ static const struct sensor_driver_api pmw3610_driver_api = {
     .attr_set = pmw3610_attr_set,
 };
 
-#if IS_ENABLED(CONFIG_PM_DEVICE)
-
-static int pmw3610_pm_action(const struct device *dev, enum pm_device_action action) {
-    switch (action) {
-    case PM_DEVICE_ACTION_SUSPEND:
-        return pmw3610_set_interrupt(dev, false);
-    case PM_DEVICE_ACTION_RESUME:
-        return pmw3610_set_interrupt(dev, true);
-    default:
-        return -ENOTSUP;
-    }
-}
-
-#endif // IS_ENABLED(CONFIG_PM_DEVICE)
+// #if IS_ENABLED(CONFIG_PM_DEVICE)
+// static int pmw3610_pm_action(const struct device *dev, enum pm_device_action action) {
+//     switch (action) {
+//     case PM_DEVICE_ACTION_SUSPEND:
+//         return pmw3610_set_interrupt(dev, false);
+//     case PM_DEVICE_ACTION_RESUME:
+//         return pmw3610_set_interrupt(dev, true);
+//     default:
+//         return -ENOTSUP;
+//     }
+// }
+// #endif // IS_ENABLED(CONFIG_PM_DEVICE)
+// PM_DEVICE_DT_INST_DEFINE(n, pmw3610_pm_action);
 
 #define PMW3610_SPI_MODE (SPI_OP_MODE_MASTER | SPI_WORD_SET(8) | SPI_MODE_CPOL | \
                         SPI_MODE_CPHA | SPI_TRANSFER_MSB)
@@ -644,7 +644,6 @@ static int pmw3610_pm_action(const struct device *dev, enum pm_device_action act
         .y_input_code = DT_PROP(DT_DRV_INST(n), y_input_code),                                     \
         .force_awake = DT_PROP(DT_DRV_INST(n), force_awake),                                       \
     };                                                                                             \
-    PM_DEVICE_DT_INST_DEFINE(n, pmw3610_pm_action);                                                \
     DEVICE_DT_INST_DEFINE(n, pmw3610_init, NULL, &data##n, &config##n, POST_KERNEL,                \
                           CONFIG_INPUT_PMW3610_INIT_PRIORITY, &pmw3610_driver_api);
 
