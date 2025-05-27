@@ -402,7 +402,7 @@ static int pmw3610_report_data(const struct device *dev) {
     if (err) {
         return err;
     }
-    // LOG_HEXDUMP_DBG(buf, sizeof(buf), "buf");
+    // LOG_HEXDUMP_DBG(buf, PMW3610_BURST_SIZE, "buf");
 
 // 12-bit two's complement value to int16_t
 // adapted from https://stackoverflow.com/questions/70802306/convert-a-12-bit-signed-number-in-c
