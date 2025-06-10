@@ -232,7 +232,13 @@ static int pmw3610_set_performance(const struct device *dev, bool enabled) {
         }
         LOG_INF("Get performance register (reg value 0x%x)", value);
 
-        uint8_t perf = value & 0x0F; // reset bit[3..0] to 0x0 (normal operation)
+        // uint8_t perf = value & 0x0F; // reset bit[3..0] to 0x0 (normal operation)
+
+        // BIT 3:   VEL_RUNRATE    0x0: 8ms; 0x1 4ms;
+        // BIT 2:   POSHI_RUN_RATE 0x0: 8ms; 0x1 4ms;
+        // BIT 1-0: POSLO_RUN_RATE 0x0: 8ms; 0x1 4ms; 0x2 2ms; 0x4 Reserved
+        uint8_t perf = 0x0d;
+
         if (enabled) {
             perf |= 0xF0; // set bit[3..0] to 0xF (force awake)
         }
