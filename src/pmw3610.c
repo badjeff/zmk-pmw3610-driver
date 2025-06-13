@@ -232,12 +232,17 @@ static int pmw3610_set_performance(const struct device *dev, bool enabled) {
         }
         LOG_INF("Get performance register (reg value 0x%x)", value);
 
-        // uint8_t perf = value & 0x0F; // reset bit[3..0] to 0x0 (normal operation)
-
-        // BIT 3:   VEL_RUNRATE    0x0: 8ms; 0x1 4ms;
-        // BIT 2:   POSHI_RUN_RATE 0x0: 8ms; 0x1 4ms;
-        // BIT 1-0: POSLO_RUN_RATE 0x0: 8ms; 0x1 4ms; 0x2 2ms; 0x4 Reserved
-        uint8_t perf = 0x0d;
+        // Set prefered RUN RATE        
+        //   BIT 3:   VEL_RUNRATE    0x0: 8ms; 0x1 4ms;
+        //   BIT 2:   POSHI_RUN_RATE 0x0: 8ms; 0x1 4ms;
+        //   BIT 1-0: POSLO_RUN_RATE 0x0: 8ms; 0x1 4ms; 0x2 2ms; 0x4 Reserved
+        uint8_t perf;
+        if (config->force_awake_4ms_mode) {
+            perf = 0x0d; // RUN RATE @ 4ms
+        } else {
+            // reset bit[3..0] to 0x0 (normal operation)
+            perf = value & 0x0F; // RUN RATE @ 8ms
+        }
 
         if (enabled) {
             perf |= 0xF0; // set bit[3..0] to 0xF (force awake)
@@ -649,6 +654,7 @@ static const struct sensor_driver_api pmw3610_driver_api = {
         .x_input_code = DT_PROP(DT_DRV_INST(n), x_input_code),                                     \
         .y_input_code = DT_PROP(DT_DRV_INST(n), y_input_code),                                     \
         .force_awake = DT_PROP(DT_DRV_INST(n), force_awake),                                       \
+        .force_awake_4ms_mode = DT_PROP(DT_DRV_INST(n), force_awake_4ms_mode),                     \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, pmw3610_init, NULL, &data##n, &config##n, POST_KERNEL,                \
                           CONFIG_INPUT_PMW3610_INIT_PRIORITY, &pmw3610_driver_api);

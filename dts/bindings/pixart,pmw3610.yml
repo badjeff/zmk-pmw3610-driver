@@ -24,3 +24,5 @@ properties:
     required: true
   force-awake:
     type: boolean
+  force-awake-4ms-mode:
+    type: boolean
