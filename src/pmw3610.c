@@ -17,6 +17,15 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_LOG_LEVEL);
 
+// The number of bursts to skip once we re‐enable performance
+#define PMW3610_DROP_BURSTS_AFTER_WAKE 3
+static volatile int drop_motion_bursts;
+static bool last_performance_enabled = false;
+
+/* Motion accumulators – shared between report and performance functions */
+static int64_t dx = 0;
+static int64_t dy = 0;
+
 //////// Sensor initialization steps definition //////////
 // init is done in non-blocking manner (i.e., async), a //
 // delayable work is defined for this purpose           //
@@ -221,44 +230,58 @@ static int pmw3610_set_downshift_time(const struct device *dev, uint8_t reg_addr
 
 static int pmw3610_set_performance(const struct device *dev, bool enabled) {
     const struct pixart_config *config = dev->config;
+    uint8_t old_perf, new_perf;
     int err = 0;
 
-    if (config->force_awake) {
-        uint8_t value;
-        err = pmw3610_read_reg(dev, PMW3610_REG_PERFORMANCE, &value);
-        if (err) {
-            LOG_ERR("Can't read ref-performance %d", err);
-            return err;
-        }
-        LOG_INF("Get performance register (reg value 0x%x)", value);
+    LOG_INF("[pmw3610_set_performance] ZMK %s, sensor %s",
+            enabled ? "ACTIVE" : "IDLE/SLEEP",
+            config->force_awake ? "FORCE AWAKE" : "ALLOW REST");
 
-        // Set prefered RUN RATE        
-        //   BIT 3:   VEL_RUNRATE    0x0: 8ms; 0x1 4ms;
-        //   BIT 2:   POSHI_RUN_RATE 0x0: 8ms; 0x1 4ms;
-        //   BIT 1-0: POSLO_RUN_RATE 0x0: 8ms; 0x1 4ms; 0x2 2ms; 0x4 Reserved
-        uint8_t perf;
-        if (config->force_awake_4ms_mode) {
-            perf = 0x0d; // RUN RATE @ 4ms
-        } else {
-            // reset bit[3..0] to 0x0 (normal operation)
-            perf = value & 0x0F; // RUN RATE @ 8ms
-        }
+    // Prime drop-motion-burst counter on wake transition
+    if (enabled && !last_performance_enabled) {
+        drop_motion_bursts = PMW3610_DROP_BURSTS_AFTER_WAKE;
+        dx = 0;
+        dy = 0;
+        LOG_INF("[pmw3610_set_performance] Wake transition: primed drop_motion_bursts = %d", PMW3610_DROP_BURSTS_AFTER_WAKE);
+    }
+    last_performance_enabled = enabled;
 
-        if (enabled) {
-            perf |= 0xF0; // set bit[3..0] to 0xF (force awake)
-        }
-        if (perf != value) {
-            err = pmw3610_write(dev, PMW3610_REG_PERFORMANCE, perf);
-            if (err) {
-                LOG_ERR("Can't write performance register %d", err);
-                return err;
-            }
-            LOG_INF("Set performance register (reg value 0x%x)", perf);
-        }
-        LOG_INF("%s performance mode", enabled ? "enable" : "disable");
+    if (!config->force_awake) {
+        LOG_INF("[pmw3610_set_performance] Skipping PERFORMANCE update (force_awake disabled)");
+        return 0;
     }
 
-    return err;
+    // Read current PERFORMANCE register
+    err = pmw3610_read_reg(dev, PMW3610_REG_PERFORMANCE, &old_perf);
+    if (err) {
+        LOG_ERR("[pmw3610_set_performance] Failed to read PERFORMANCE register: %d", err);
+        return err;
+    }
+    LOG_INF("[pmw3610_set_performance] Current PERFORMANCE register: 0x%02X", old_perf);
+
+    // Prepare new value with desired run rate
+    uint8_t run_rate = config->force_awake_4ms_mode ? 0x0D : 0x00; // 4ms or 8ms
+    new_perf = run_rate;
+
+    if (enabled) {
+        new_perf |= 0xF0; // Set force-awake bits
+    }
+
+    // Only write if changed
+    if (new_perf != old_perf) {
+        LOG_INF("[pmw3610_set_performance] Updating PERFORMANCE register: 0x%02X -> 0x%02X", old_perf, new_perf);
+        err = pmw3610_write(dev, PMW3610_REG_PERFORMANCE, new_perf);
+        if (err) {
+            LOG_ERR("[pmw3610_set_performance] Failed to write PERFORMANCE register: %d", err);
+            return err;
+        }
+    } else {
+        LOG_INF("[pmw3610_set_performance] PERFORMANCE register unchanged: 0x%02X", old_perf);
+    }
+
+    LOG_INF("[pmw3610_set_performance] Performance mode %s complete", enabled ? "enable" : "disable");
+
+    return 0;
 }
 
 static int pmw3610_set_interrupt(const struct device *dev, const bool en) {
@@ -399,9 +422,27 @@ static int pmw3610_report_data(const struct device *dev) {
         LOG_WRN("Device is not initialized yet");
         return -EBUSY;
     }
+    
+    // Drop the first N bursts after wake BEFORE any SPI read
+    if (drop_motion_bursts > 0) {
+        uint8_t buf[PMW3610_BURST_SIZE];
 
-    static int64_t dx = 0;
-    static int64_t dy = 0;
+        /* READ the burst to clear internal counters … */
+        int rc = pmw3610_read(dev,
+                            PMW3610_REG_MOTION_BURST,
+                            buf,
+                            PMW3610_BURST_SIZE);
+        if (rc) {
+            LOG_WRN("Drop-burst read failed: %d", rc);
+        }
+        
+        drop_motion_bursts--;
+        LOG_INF("[pmw3610_report_data] Skipped burst after wake (bursts left: %d)", drop_motion_bursts);
+
+        // Send harmless event to wake ZMK activity system and bring the keyboard out of REST mode
+        input_report(dev, config->evt_type, config->x_input_code, 0, true, K_NO_WAIT);
+        return 0;
+    }
 
 #if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
     static int64_t last_smp_time = 0;
@@ -409,8 +450,9 @@ static int pmw3610_report_data(const struct device *dev) {
     int64_t now = k_uptime_get();
 #endif
 
-	int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
+    int err = pmw3610_read(dev, PMW3610_REG_MOTION_BURST, buf, PMW3610_BURST_SIZE);
     if (err) {
+        LOG_ERR("SPI burst read failed: %d", err);
         return err;
     }
     // LOG_HEXDUMP_DBG(buf, PMW3610_BURST_SIZE, "buf");
