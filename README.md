@@ -6,7 +6,7 @@ This driver had been tested on [my PMW3610 breakout board](https://github.com/ba
 
 #### What is different to [inorichi's driver](https://github.com/inorichi/zmk-pmw3610-driver)
 - Compatible to be used on split peripheral shield.
-- Replaced `CONFIG_PMW3610_ORIENTATION_*` with `CONFIG_PMW3610_SWAP_XY` and `PMW3610_INVERT_*`. Then now, it can use for building conventional palm-gripping mouse.
+- Replaced `CONFIG_PMW3610_ORIENTATION_*` with ~~`CONFIG_PMW3610_SWAP_XY` and `PMW3610_INVERT_*`~~ device tree node attributes `swap-xy;`, `invert-x;` and `invert-y;`. Then now, it can use for building conventional palm-gripping mouse.
 - Moved `CONFIG_PMW3610_CPI` to device tree node `.dts/.overlay`. It is now allowed to setup diffeent config for multi-sensor on single shield. In case of building typical mouse shield, we use one movment sensor on bottom, and another sensor for scrolling on top. Those settings could be distinguishable.
 - Features for scroll-mode, snipe-mode, and auto-layer are no longer needed to be provided from sensor driver. Those settings is now configurable in keymap with layer-based `zmk,input-listener`, instead of setup static value in shield config files.
 - Seperating sampling rate and reporting rate. It reports accumulated XY axes displacement between data ready interrupts. You will still feeling lag and jumpy in noisy radio hell, but the cursor traction should being lossless, and predicable in exact terms.
