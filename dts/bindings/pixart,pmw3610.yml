@@ -13,6 +13,12 @@ properties:
     type: int
     default: 600
     description: "CPI value (Range: 200 - 3200, Step: 200)"
+  swap-xy:
+    type: boolean
+  invert-x:
+    type: boolean
+  invert-y:
+    type: boolean
   evt-type:
     type: int
     required: true

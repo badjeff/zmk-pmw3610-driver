@@ -108,8 +108,19 @@ static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi) {
         return -EINVAL;
     }
 
+    uint8_t value;
+    int err = pmw3610_read_reg(dev, PMW3610_REG_RES_STEP, &value);
+    if (err) {
+        LOG_ERR("Can't read res step %d", err);
+        return err;
+    }
+    LOG_INF("Get res step register (reg value 0x%x)", value);
+
     // Convert CPI to register value
-    uint8_t value = (cpi / 200);
+    // Set prefered RES_STEP
+    //   BIT 4-0: CPI
+    uint8_t cpi_val = cpi / 200;
+    value = (value & 0xE0) | (cpi_val & 0x1F);
     LOG_INF("Setting CPI to %u (reg value 0x%x)", cpi, value);
 
     /* set the cpi */
@@ -120,7 +131,6 @@ static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi) {
 	k_sleep(K_USEC(T_CLOCK_ON_DELAY_US));
 
     /* Write data */
-    int err;
     for (size_t i = 0; i < sizeof(data); i++) {
         err = pmw3610_write_reg(dev, addr[i], data[i]);
         if (err) {
@@ -132,6 +142,65 @@ static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi) {
 
     if (err) {
         LOG_ERR("Failed to set CPI");
+        return err;
+    }
+
+    return 0;
+}
+
+static int pmw3610_set_axis(const struct device *dev, bool swap_xy, bool inv_x, bool inv_y) {
+    LOG_INF("Setting axis swap_xy: %s inv_x: %s inv_y: %s", 
+            swap_xy ? "yes" : "no", inv_x ? "yes" : "no", inv_y ? "yes" : "no");
+
+    uint8_t value;
+    int err = pmw3610_read_reg(dev, PMW3610_REG_RES_STEP, &value);
+    if (err) {
+        LOG_ERR("Can't read res step %d", err);
+        return err;
+    }
+    LOG_INF("Get res step register (reg value 0x%x)", value);
+
+    // Convert axis to register value
+    // Set prefered RES_STEP
+    //   BIT 7: SWAP_XY
+    //   BIT 6: INV_X
+    //   BIT 5: INV_Y
+#if IS_ENABLED(CONFIG_PMW3610_SWAP_XY)
+    value |= (1 << 7);
+#else
+    if (swap_xy) { value |= (1 << 7); } else { value &= ~(1 << 7); }
+#endif
+#if IS_ENABLED(CONFIG_PMW3610_INVERT_X)
+    value |= (1 << 6);
+#else
+    if (inv_x) { value |= (1 << 6); } else { value &= ~(1 << 6); }
+#endif
+#if IS_ENABLED(CONFIG_PMW3610_INVERT_Y)
+    value |= (1 << 5);
+#else
+    if (inv_y) { value |= (1 << 5); } else { value &= ~(1 << 5); }
+#endif
+    LOG_INF("Setting RES_STEP to (reg value 0x%x)", value);
+
+    /* set the axis control register */
+    uint8_t addr[] = {0x7F, PMW3610_REG_RES_STEP, 0x7F};
+    uint8_t data[] = {0xFF, value, 0x00};
+
+	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
+	k_sleep(K_USEC(T_CLOCK_ON_DELAY_US));
+
+    /* Write data */
+    for (size_t i = 0; i < sizeof(data); i++) {
+        err = pmw3610_write_reg(dev, addr[i], data[i]);
+        if (err) {
+            LOG_ERR("Burst write failed on SPI write (data)");
+            break;
+        }
+    }
+    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
+
+    if (err) {
+        LOG_ERR("Failed to set axis");
         return err;
     }
 
@@ -330,6 +399,10 @@ static int pmw3610_async_init_configure(const struct device *dev) {
     }
 
     if (!err) {
+        err = pmw3610_set_axis(dev, config->swap_xy, config->inv_x, config->inv_y);
+    }
+
+    if (!err) {
         err = pmw3610_set_downshift_time(dev, PMW3610_REG_RUN_DOWNSHIFT,
                                          CONFIG_PMW3610_RUN_DOWNSHIFT_TIME_MS);
     }
@@ -422,18 +495,6 @@ static int pmw3610_report_data(const struct device *dev) {
     int16_t x = TOINT16((buf[PMW3610_X_L_POS] + ((buf[PMW3610_XY_H_POS] & 0xF0) << 4)), 12);
     int16_t y = TOINT16((buf[PMW3610_Y_L_POS] + ((buf[PMW3610_XY_H_POS] & 0x0F) << 8)), 12);
     LOG_DBG("x/y: %d/%d", x, y);
-
-#if IS_ENABLED(CONFIG_PMW3610_SWAP_XY)
-    int16_t a = x;
-    x = y;
-    y = a;
-#endif
-#if IS_ENABLED(CONFIG_PMW3610_INVERT_X)
-    x = -x;
-#endif
-#if IS_ENABLED(CONFIG_PMW3610_INVERT_Y)
-    y = -y;
-#endif
 
 #ifdef CONFIG_PMW3610_SMART_ALGORITHM
     int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8) 
@@ -650,6 +711,9 @@ static const struct sensor_driver_api pmw3610_driver_api = {
 		.spi = SPI_DT_SPEC_INST_GET(n, PMW3610_SPI_MODE, 0),		                               \
         .irq_gpio = GPIO_DT_SPEC_INST_GET(n, irq_gpios),                                           \
         .cpi = DT_PROP(DT_DRV_INST(n), cpi),                                                       \
+        .swap_xy = DT_PROP(DT_DRV_INST(n), swap_xy),                                               \
+        .inv_x = DT_PROP(DT_DRV_INST(n), invert_x),                                                \
+        .inv_y = DT_PROP(DT_DRV_INST(n), invert_y),                                                \
         .evt_type = DT_PROP(DT_DRV_INST(n), evt_type),                                             \
         .x_input_code = DT_PROP(DT_DRV_INST(n), x_input_code),                                     \
         .y_input_code = DT_PROP(DT_DRV_INST(n), y_input_code),                                     \

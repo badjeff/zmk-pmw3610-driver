@@ -77,6 +77,9 @@ Update `board.overlay` adding the necessary bits (update the pins for your board
         spi-max-frequency = <2000000>;
         irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
         cpi = <600>;
+        // swap-xy; /* optional */
+        // invert-x; /* optional */
+        // invert-y; /* optional */
         evt-type = <INPUT_EV_REL>;
         x-input-code = <INPUT_REL_X>;
         y-input-code = <INPUT_REL_Y>;
@@ -108,9 +111,9 @@ CONFIG_SPI=y
 CONFIG_INPUT=y
 CONFIG_ZMK_POINTING=y
 CONFIG_PMW3610=y
-# CONFIG_PMW3610_SWAP_XY=y
-# CONFIG_PMW3610_INVERT_X=y
-# CONFIG_PMW3610_INVERT_Y=y
+# CONFIG_PMW3610_SWAP_XY=y // <-- deprecated, use swap-xy; instead
+# CONFIG_PMW3610_INVERT_X=y // <-- deprecated, use invert-x; instead
+# CONFIG_PMW3610_INVERT_Y=y // <-- deprecated, use invert-y; instead
 # CONFIG_PMW3610_REPORT_INTERVAL_MIN=12
 # CONFIG_PMW3610_LOG_LEVEL_DBG=y
 # CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS=300 // <--see Troubleshooting
