@@ -6,12 +6,18 @@
 #
 
 menuconfig PMW3610
-    bool "PMW3610 mouse optical sensor"
+  bool "PMW3610 mouse optical sensor"
   select SPI
-    help
+  depends on INPUT
+  depends on DT_HAS_PIXART_PMW3610_ENABLED
+  help
       Enable PMW3610 mouse optical sensor.
 
 if PMW3610
+
+config INPUT_PMW3610_INIT_PRIORITY
+    int "PMW3610 initialization priority"
+    default INPUT_INIT_PRIORITY
 
 config PMW3610_SWAP_XY
   bool "Swap the X/Y axis of PMW3610 sensor"

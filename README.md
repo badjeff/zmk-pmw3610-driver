@@ -1,10 +1,12 @@
-PMW3610 driver implementation for ZMK
+# PMW3610 driver implementation for ZMK
 
 This work is based on [ufan's zmk pixart sensor drivers](https://github.com/ufan/zmk/tree/support-trackpad), [inorichi's zmk-pmw3610-driver](https://github.com/inorichi/zmk-pmw3610-driver), and [Zephyr PMW3610 driver](https://github.com/zephyrproject-rtos/zephyr/blob/main/drivers/input/input_pmw3610.c).
 
+This driver had been tested on [my PMW3610 breakout board](https://github.com/badjeff/pmw3610-pcb).
+
 #### What is different to [inorichi's driver](https://github.com/inorichi/zmk-pmw3610-driver)
 - Compatible to be used on split peripheral shield.
-- Replaced `CONFIG_PMW3610_ORIENTATION_*` with `CONFIG_PMW3610_SWAP_XY` and `PMW3610_INVERT_*`. Then now, it can use for building conventional palm-gripping mouse.
+- Replaced `CONFIG_PMW3610_ORIENTATION_*` with ~~`CONFIG_PMW3610_SWAP_XY` and `PMW3610_INVERT_*`~~ device tree node attributes `swap-xy;`, `invert-x;` and `invert-y;`. Then now, it can used on [leylabella](https://github.com/badjeff/leylabella), which has different sensor breakout pcb orientation on one device.
 - Moved `CONFIG_PMW3610_CPI` to device tree node `.dts/.overlay`. It is now allowed to setup diffeent config for multi-sensor on single shield. In case of building typical mouse shield, we use one movment sensor on bottom, and another sensor for scrolling on top. Those settings could be distinguishable.
 - Features for scroll-mode, snipe-mode, and auto-layer are no longer needed to be provided from sensor driver. Those settings is now configurable in keymap with layer-based `zmk,input-listener`, instead of setup static value in shield config files.
 - Seperating sampling rate and reporting rate. It reports accumulated XY axes displacement between data ready interrupts. You will still feeling lag and jumpy in noisy radio hell, but the cursor traction should being lossless, and predicable in exact terms.
@@ -58,6 +60,8 @@ Update `board.overlay` adding the necessary bits (update the pins for your board
     };
 };
 
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
 &spi0 {
     status = "okay";
     compatible = "nordic,nrf-spim";
@@ -73,9 +77,22 @@ Update `board.overlay` adding the necessary bits (update the pins for your board
         spi-max-frequency = <2000000>;
         irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
         cpi = <600>;
+        // swap-xy; /* optional */
+        // invert-x; /* optional */
+        // invert-y; /* optional */
         evt-type = <INPUT_EV_REL>;
         x-input-code = <INPUT_REL_X>;
         y-input-code = <INPUT_REL_Y>;
+
+        force-awake;
+        /* keep the sensor awake while ZMK activity state is ACTIVE,
+           fallback to normal downshift mode after ZMK goes into IDLE / SLEEP mode.
+           thus, the sensor would be a `wakeup-source` */
+
+        force-awake-4ms-mode;
+        /* while force-awake is acitvated, enable this mode to force sampling per 
+           4ms, where the default sampling rate is 8ms. */
+        /* NOTE: apply this mode if you need 250Hz with direct USB connection. */
     };
 };
 
@@ -94,9 +111,9 @@ CONFIG_SPI=y
 CONFIG_INPUT=y
 CONFIG_ZMK_POINTING=y
 CONFIG_PMW3610=y
-# CONFIG_PMW3610_SWAP_XY=y
-# CONFIG_PMW3610_INVERT_X=y
-# CONFIG_PMW3610_INVERT_Y=y
+# CONFIG_PMW3610_SWAP_XY=y // <-- deprecated, use swap-xy; instead
+# CONFIG_PMW3610_INVERT_X=y // <-- deprecated, use invert-x; instead
+# CONFIG_PMW3610_INVERT_Y=y // <-- deprecated, use invert-y; instead
 # CONFIG_PMW3610_REPORT_INTERVAL_MIN=12
 # CONFIG_PMW3610_LOG_LEVEL_DBG=y
 # CONFIG_PMW3610_INIT_RETRY_COUNT=50
