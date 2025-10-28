@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#define DT_DRV_COMPAT pixart_pmw3610
+#define DT_DRV_COMPAT pixart_pmw3610_alt
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
@@ -15,7 +15,7 @@
 #include "pmw3610.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_LOG_LEVEL);
+LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_ALT_LOG_LEVEL);
 
 //////// Sensor initialization steps definition //////////
 // init is done in non-blocking manner (i.e., async), a //
@@ -34,7 +34,7 @@ enum pmw3610_init_step {
 // - Since MCU is not involved in the sensor init process, i is allowed to do other tasks.
 //   Thus, k_sleep or delayed schedule can be used.
 static const int32_t async_init_delay[ASYNC_INIT_STEP_COUNT] = {
-    [ASYNC_INIT_STEP_POWER_UP] = 10 + CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS, // >10ms needed
+    [ASYNC_INIT_STEP_POWER_UP] = 10 + CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS, // >10ms needed
     [ASYNC_INIT_STEP_CLEAR_OB1] = 200, // 150 us required, test shows too short,
                                        // also power-up reset is added in this step, thus using 50 ms
     [ASYNC_INIT_STEP_CHECK_OB1] = 50,  // 10 ms required in spec,
@@ -165,17 +165,17 @@ static int pmw3610_set_axis(const struct device *dev, bool swap_xy, bool inv_x, 
     //   BIT 7: SWAP_XY
     //   BIT 6: INV_X
     //   BIT 5: INV_Y
-#if IS_ENABLED(CONFIG_PMW3610_SWAP_XY)
+#if IS_ENABLED(CONFIG_PMW3610_ALT_SWAP_XY)
     value |= (1 << 7);
 #else
     if (swap_xy) { value |= (1 << 7); } else { value &= ~(1 << 7); }
 #endif
-#if IS_ENABLED(CONFIG_PMW3610_INVERT_X)
+#if IS_ENABLED(CONFIG_PMW3610_ALT_INVERT_X)
     value |= (1 << 6);
 #else
     if (inv_x) { value |= (1 << 6); } else { value &= ~(1 << 6); }
 #endif
-#if IS_ENABLED(CONFIG_PMW3610_INVERT_Y)
+#if IS_ENABLED(CONFIG_PMW3610_ALT_INVERT_Y)
     value |= (1 << 5);
 #else
     if (inv_y) { value |= (1 << 5); } else { value &= ~(1 << 5); }
@@ -250,8 +250,8 @@ static int pmw3610_set_downshift_time(const struct device *dev, uint8_t reg_addr
          * Rest1 downshift time = PMW3610_REG_RUN_DOWNSHIFT
          *                        * 16 * Rest1_sample_period (default 40 ms)
          */
-        maxtime = 255 * 16 * CONFIG_PMW3610_REST1_SAMPLE_TIME_MS;
-        mintime = 16 * CONFIG_PMW3610_REST1_SAMPLE_TIME_MS;
+        maxtime = 255 * 16 * CONFIG_PMW3610_ALT_REST1_SAMPLE_TIME_MS;
+        mintime = 16 * CONFIG_PMW3610_ALT_REST1_SAMPLE_TIME_MS;
         break;
 
     case PMW3610_REG_REST2_DOWNSHIFT:
@@ -259,8 +259,8 @@ static int pmw3610_set_downshift_time(const struct device *dev, uint8_t reg_addr
          * Rest2 downshift time = PMW3610_REG_REST2_DOWNSHIFT
          *                        * 128 * Rest2 rate (default 100 ms)
          */
-        maxtime = 255 * 128 * CONFIG_PMW3610_REST2_SAMPLE_TIME_MS;
-        mintime = 128 * CONFIG_PMW3610_REST2_SAMPLE_TIME_MS;
+        maxtime = 255 * 128 * CONFIG_PMW3610_ALT_REST2_SAMPLE_TIME_MS;
+        mintime = 128 * CONFIG_PMW3610_ALT_REST2_SAMPLE_TIME_MS;
         break;
 
     default:
@@ -404,32 +404,32 @@ static int pmw3610_async_init_configure(const struct device *dev) {
 
     if (!err) {
         err = pmw3610_set_downshift_time(dev, PMW3610_REG_RUN_DOWNSHIFT,
-                                         CONFIG_PMW3610_RUN_DOWNSHIFT_TIME_MS);
+                                         CONFIG_PMW3610_ALT_RUN_DOWNSHIFT_TIME_MS);
     }
 
     if (!err) {
         err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST1_DOWNSHIFT,
-                                         CONFIG_PMW3610_REST1_DOWNSHIFT_TIME_MS);
+                                         CONFIG_PMW3610_ALT_REST1_DOWNSHIFT_TIME_MS);
     }
 
     if (!err) {
         err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST2_DOWNSHIFT,
-                                         CONFIG_PMW3610_REST2_DOWNSHIFT_TIME_MS);
+                                         CONFIG_PMW3610_ALT_REST2_DOWNSHIFT_TIME_MS);
     }
 
     if (!err) {
         err = pmw3610_set_sample_time(dev, PMW3610_REG_REST1_RATE,
-                                      CONFIG_PMW3610_REST1_SAMPLE_TIME_MS);
+                                      CONFIG_PMW3610_ALT_REST1_SAMPLE_TIME_MS);
     }
 
     if (!err) {
         err = pmw3610_set_sample_time(dev, PMW3610_REG_REST2_RATE,
-                                      CONFIG_PMW3610_REST2_SAMPLE_TIME_MS);
+                                      CONFIG_PMW3610_ALT_REST2_SAMPLE_TIME_MS);
     }
 
     if (!err) {
         err = pmw3610_set_sample_time(dev, PMW3610_REG_REST3_RATE,
-                                      CONFIG_PMW3610_REST3_SAMPLE_TIME_MS);
+                                      CONFIG_PMW3610_ALT_REST3_SAMPLE_TIME_MS);
     }
 
     if (err) {
@@ -476,7 +476,7 @@ static int pmw3610_report_data(const struct device *dev) {
     static int64_t dx = 0;
     static int64_t dy = 0;
 
-#if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
+#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
     static int64_t last_smp_time = 0;
     static int64_t last_rpt_time = 0;
     int64_t now = k_uptime_get();
@@ -496,7 +496,7 @@ static int pmw3610_report_data(const struct device *dev) {
     int16_t y = TOINT16((buf[PMW3610_Y_L_POS] + ((buf[PMW3610_XY_H_POS] & 0x0F) << 8)), 12);
     LOG_DBG("x/y: %d/%d", x, y);
 
-#ifdef CONFIG_PMW3610_SMART_ALGORITHM
+#ifdef CONFIG_PMW3610_ALT_SMART_ALGORITHM
     int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8) 
                     + buf[PMW3610_SHUTTER_L_POS];
     if (data->sw_smart_flag && shutter < 45) {
@@ -509,9 +509,9 @@ static int pmw3610_report_data(const struct device *dev) {
     }
 #endif
 
-#if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
+#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
     // purge accumulated delta, if last sampled had not been reported on last report tick
-    if (now - last_smp_time >= CONFIG_PMW3610_REPORT_INTERVAL_MIN) {
+    if (now - last_smp_time >= CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
         dx = 0;
         dy = 0;
     }
@@ -522,9 +522,9 @@ static int pmw3610_report_data(const struct device *dev) {
     dx += x;
     dy += y;
 
-#if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
+#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
     // strict to report inerval
-    if (now - last_rpt_time < CONFIG_PMW3610_REPORT_INTERVAL_MIN) {
+    if (now - last_rpt_time < CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN) {
         return 0;
     }
 #endif
@@ -536,7 +536,7 @@ static int pmw3610_report_data(const struct device *dev) {
     bool have_y = ry != 0;
 
     if (have_x || have_y) {
-#if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
+#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
         last_rpt_time = now;
 #endif
         dx = 0;
@@ -633,7 +633,7 @@ static int pmw3610_init(const struct device *dev) {
     return err;
 }
 
-static int pmw3610_attr_set(const struct device *dev, enum sensor_channel chan,
+static int pmw3610_alt_attr_set(const struct device *dev, enum sensor_channel chan,
                             enum sensor_attribute attr, const struct sensor_value *val) {
     struct pixart_data *data = dev->data;
     int err;
@@ -648,31 +648,31 @@ static int pmw3610_attr_set(const struct device *dev, enum sensor_channel chan,
     }
 
     switch ((uint32_t)attr) {
-    case PMW3610_ATTR_CPI:
+    case PMW3610_ALT_ATTR_CPI:
         err = pmw3610_set_cpi(dev, PMW3610_SVALUE_TO_CPI(*val));
         break;
 
-    case PMW3610_ATTR_RUN_DOWNSHIFT_TIME:
+    case PMW3610_ALT_ATTR_RUN_DOWNSHIFT_TIME:
         err = pmw3610_set_downshift_time(dev, PMW3610_REG_RUN_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
-    case PMW3610_ATTR_REST1_DOWNSHIFT_TIME:
+    case PMW3610_ALT_ATTR_REST1_DOWNSHIFT_TIME:
         err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST1_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
-    case PMW3610_ATTR_REST2_DOWNSHIFT_TIME:
+    case PMW3610_ALT_ATTR_REST2_DOWNSHIFT_TIME:
         err = pmw3610_set_downshift_time(dev, PMW3610_REG_REST2_DOWNSHIFT, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
-    case PMW3610_ATTR_REST1_SAMPLE_TIME:
+    case PMW3610_ALT_ATTR_REST1_SAMPLE_TIME:
         err = pmw3610_set_sample_time(dev, PMW3610_REG_REST1_RATE, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
-    case PMW3610_ATTR_REST2_SAMPLE_TIME:
+    case PMW3610_ALT_ATTR_REST2_SAMPLE_TIME:
         err = pmw3610_set_sample_time(dev, PMW3610_REG_REST2_RATE, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
-    case PMW3610_ATTR_REST3_SAMPLE_TIME:
+    case PMW3610_ALT_ATTR_REST3_SAMPLE_TIME:
         err = pmw3610_set_sample_time(dev, PMW3610_REG_REST3_RATE, PMW3610_SVALUE_TO_TIME(*val));
         break;
 
@@ -685,7 +685,7 @@ static int pmw3610_attr_set(const struct device *dev, enum sensor_channel chan,
 }
 
 static const struct sensor_driver_api pmw3610_driver_api = {
-    .attr_set = pmw3610_attr_set,
+    .attr_set = pmw3610_alt_attr_set,
 };
 
 // #if IS_ENABLED(CONFIG_PM_DEVICE)

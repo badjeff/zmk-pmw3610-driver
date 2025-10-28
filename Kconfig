@@ -5,37 +5,37 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-menuconfig PMW3610
+menuconfig PMW3610_ALT
   bool "PMW3610 mouse optical sensor"
   select SPI
   depends on INPUT
-  depends on DT_HAS_PIXART_PMW3610_ENABLED
+  depends on DT_HAS_PIXART_PMW3610_ALT_ENABLED
   help
       Enable PMW3610 mouse optical sensor.
 
-if PMW3610
+if PMW3610_ALT
 
 config INPUT_PMW3610_INIT_PRIORITY
     int "PMW3610 initialization priority"
     default INPUT_INIT_PRIORITY
 
-config PMW3610_SWAP_XY
+config PMW3610_ALT_SWAP_XY
   bool "Swap the X/Y axis of PMW3610 sensor"
 
-config PMW3610_INVERT_X
+config PMW3610_ALT_INVERT_X
   bool "Invert the X axis of PMW3610 sensor"
 
-config PMW3610_INVERT_Y
+config PMW3610_ALT_INVERT_Y
   bool "Invert the Y axis of PMW3610 sensor"
 
-config PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS
+config PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS
   int "Extra power up init delay (ms)"
   default 0
   help
     Default minimum init power up delay is 10ms.
     Use this config to postpone init power up sequence if needs longer bootup time.
 
-config PMW3610_REPORT_INTERVAL_MIN
+config PMW3610_ALT_REPORT_INTERVAL_MIN
 	int "PMW3610's default minimum report rate"
 	default 0
 	help
@@ -43,7 +43,7 @@ config PMW3610_REPORT_INTERVAL_MIN
 		Slow down input reporting for hid queue over the air.
 		Turn value down to 8ms to get sharp response if use with USB only.
 
-config PMW3610_SMART_ALGORITHM
+config PMW3610_ALT_SMART_ALGORITHM
   bool "Enable an algorithm of PMW3610 to enhance surface coverage"
   default y
   help
@@ -51,7 +51,7 @@ config PMW3610_SMART_ALGORITHM
     The algorithm is used to extend the tracking acrocss a wider range of surfaces
     such as graniles and tiles.
 
-config PMW3610_RUN_DOWNSHIFT_TIME_MS
+config PMW3610_ALT_RUN_DOWNSHIFT_TIME_MS
     int "PMW3610's default RUN mode downshift time"
     default 128
     range 13 3264
@@ -59,43 +59,43 @@ config PMW3610_RUN_DOWNSHIFT_TIME_MS
       Default RUN mode downshift down time in milliseconds.
       Time after which sensor goes from RUN to REST1 mode.
 
-config PMW3610_REST1_DOWNSHIFT_TIME_MS
+config PMW3610_ALT_REST1_DOWNSHIFT_TIME_MS
     int "PMW3610's default REST1 mode downshift time"
     default 5000
     help
       Default REST1 mode downshift down time in milliseconds.
       Time after which sensor goes from REST1 to REST2 mode.
 
-config PMW3610_REST2_DOWNSHIFT_TIME_MS
+config PMW3610_ALT_REST2_DOWNSHIFT_TIME_MS
     int "PMW3610's default REST2 mode downshift time"
     default 17000
     help
       Default REST2 mode downshift down time in milliseconds.
       Time after which sensor goes from REST2 to REST3 mode.
 
-config PMW3610_REST1_SAMPLE_TIME_MS
+config PMW3610_ALT_REST1_SAMPLE_TIME_MS
     int "PMW3610's sample time in REST1 stage"
     default 40
     # range 10 2550
     help
       Default REST1 mode sample period in millisecond
 
-config PMW3610_REST2_SAMPLE_TIME_MS
+config PMW3610_ALT_REST2_SAMPLE_TIME_MS
     int "PMW3610's sample time in REST2 stage"
     default 100
     # range 10 2550
     help
       Default REST2 mode sample period in millisecond.
 
-config PMW3610_REST3_SAMPLE_TIME_MS
+config PMW3610_ALT_REST3_SAMPLE_TIME_MS
     int "PMW3610's sample time in REST3 stage"
     default 500
     # range 10 2550
     help
       Default REST2 mode sample period in millisecond.
 
-module = PMW3610
-module-str = PMW3610
+module = PMW3610_ALT
+module-str = PMW3610_ALT
 source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
 
-endif #PMW3610
+endif #PMW3610_ALT

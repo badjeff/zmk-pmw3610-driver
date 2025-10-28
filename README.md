@@ -4,6 +4,10 @@ This work is based on [ufan's zmk pixart sensor drivers](https://github.com/ufan
 
 This driver had been tested on [my PMW3610 breakout board](https://github.com/badjeff/pmw3610-pcb).
 
+Breaking Change (for branch zmk-0.4):
+- Compatible string change to `pixart,pmw3610-alt`
+- All config prefix change to `CONFIG_PMW3610_ALT_*`
+
 #### What is different to [inorichi's driver](https://github.com/inorichi/zmk-pmw3610-driver)
 - Compatible to be used on split peripheral shield.
 - Replaced `CONFIG_PMW3610_ORIENTATION_*` with ~~`CONFIG_PMW3610_SWAP_XY` and `PMW3610_INVERT_*`~~ device tree node attributes `swap-xy;`, `invert-x;` and `invert-y;`. Then now, it can used on [leylabella](https://github.com/badjeff/leylabella), which has different sensor breakout pcb orientation on one device.
@@ -72,7 +76,7 @@ Update `board.overlay` adding the necessary bits (update the pins for your board
 
     trackball: trackball@0 {
         status = "okay";
-        compatible = "pixart,pmw3610";
+        compatible = "pixart,pmw3610-alt";
         reg = <0>;
         spi-max-frequency = <2000000>;
         irq-gpios = <&gpio0 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
@@ -110,15 +114,15 @@ Enable the driver config in `<shield>.config` file (read the Kconfig file to fin
 CONFIG_SPI=y
 CONFIG_INPUT=y
 CONFIG_ZMK_POINTING=y
-CONFIG_PMW3610=y
-# CONFIG_PMW3610_SWAP_XY=y // <-- deprecated, use swap-xy; instead
-# CONFIG_PMW3610_INVERT_X=y // <-- deprecated, use invert-x; instead
-# CONFIG_PMW3610_INVERT_Y=y // <-- deprecated, use invert-y; instead
-# CONFIG_PMW3610_REPORT_INTERVAL_MIN=12
-# CONFIG_PMW3610_LOG_LEVEL_DBG=y
-# CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS=300 // <--see Troubleshooting
+CONFIG_PMW3610_ALT=y
+# CONFIG_PMW3610_ALT_SWAP_XY=y // <-- deprecated, use swap-xy; instead
+# CONFIG_PMW3610_ALT_INVERT_X=y // <-- deprecated, use invert-x; instead
+# CONFIG_PMW3610_ALT_INVERT_Y=y // <-- deprecated, use invert-y; instead
+# CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN=12
+# CONFIG_PMW3610_ALT_LOG_LEVEL_DBG=y
+# CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS=300 // <--see Troubleshooting
 ```
 
 ## Troubleshooting
 
-If you are getting `Incorrect product id 0xFF (expecting 0x3E)!` on `nice_nano_v2` board from the log, you'd want to apply `CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS=1000` in your shield .conf/.overlay file. Due to this driver doesn't offer module dependancy setting, that would ensure external power (to enable VCC pin on board) is ready, the `CONFIG_PMW3610_INIT_POWER_UP_EXTRA_DELAY_MS` would use to add extra one second delay of power up.
+If you are getting `Incorrect product id 0xFF (expecting 0x3E)!` on `nice_nano_v2` board from the log, you'd want to apply `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS=1000` in your shield .conf/.overlay file. Due to this driver doesn't offer module dependancy setting, that would ensure external power (to enable VCC pin on board) is ready, the `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS` would use to add extra one second delay of power up.
