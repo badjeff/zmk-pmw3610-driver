@@ -1,7 +1,7 @@
 description: |
-  Sensor driver for the pixart PMW3610 mouse sensor 
+  Sensor driver for the pixart PMW3610 mouse sensor
 
-compatible: "pixart,pmw3610"
+compatible: "cyboard,pmw3610"
 
 include: spi-device.yaml
 
