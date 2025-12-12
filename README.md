@@ -4,9 +4,12 @@ This work is based on [ufan's zmk pixart sensor drivers](https://github.com/ufan
 
 This driver had been tested on [my PMW3610 breakout board](https://github.com/badjeff/pmw3610-pcb).
 
-Breaking Change (for branch zmk-0.4):
-- Compatible string change to `pixart,pmw3610-alt`
-- All config prefix change to `CONFIG_PMW3610_ALT_*`
+> [!IMPORTANT]
+> 🚨 Breaking Change for `main`/`zmk-0.4` branch of this module:
+>
+> To avoid conflicts with the upstream Zephyr driver module, changes need to be made to the existing configuration in order to use this module in the current version of ZMK.
+> - Compatible string changed to `pixart,pmw3610-alt`
+> - All config prefix changed to `CONFIG_PMW3610_ALT_*`
 
 #### What is different to [inorichi's driver](https://github.com/inorichi/zmk-pmw3610-driver)
 - Compatible to be used on split peripheral shield.
