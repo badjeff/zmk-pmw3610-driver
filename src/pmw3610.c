@@ -95,7 +95,8 @@ static int pmw3610_write(const struct device *dev, uint8_t reg, uint8_t val) {
     return 0;
 }
 
-static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi) {
+static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi, 
+                           bool swap_xy, bool inv_x, bool inv_y) {
     /* Set resolution with CPI step of 200 cpi
      * 0x1: 200 cpi (minimum cpi)
      * 0x2: 400 cpi
@@ -108,24 +109,45 @@ static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi) {
         return -EINVAL;
     }
 
-    uint8_t value;
-    int err = pmw3610_read_reg(dev, PMW3610_REG_RES_STEP, &value);
-    if (err) {
-        LOG_ERR("Can't read res step %d", err);
-        return err;
-    }
-    LOG_INF("Get res step register (reg value 0x%x)", value);
+    uint8_t value = 0x00;
+    int err = 0;
 
+    LOG_INF("Setting cpi: %d", cpi);
     // Convert CPI to register value
     // Set prefered RES_STEP
     //   BIT 4-0: CPI
     uint8_t cpi_val = cpi / 200;
     value = (value & 0xE0) | (cpi_val & 0x1F);
+
+    // Convert axis to register value
+    // Set prefered RES_STEP
+    //   BIT 7: SWAP_XY
+    //   BIT 6: INV_X
+    //   BIT 5: INV_Y
+    LOG_INF("Setting axis swap_xy: %s inv_x: %s inv_y: %s", 
+            swap_xy ? "yes" : "no", inv_x ? "yes" : "no", inv_y ? "yes" : "no");
+
+#if IS_ENABLED(CONFIG_PMW3610_ALT_SWAP_XY)
+    value |= (1 << 7);
+#else
+    if (swap_xy) { value |= (1 << 7); } else { value &= ~(1 << 7); }
+#endif
+#if IS_ENABLED(CONFIG_PMW3610_INVERT_X)
+    value |= (1 << 6);
+#else
+    if (inv_x) { value |= (1 << 6); } else { value &= ~(1 << 6); }
+#endif
+#if IS_ENABLED(CONFIG_PMW3610_INVERT_Y)
+    value |= (1 << 5);
+#else
+    if (inv_y) { value |= (1 << 5); } else { value &= ~(1 << 5); }
+#endif
+
     LOG_INF("Setting CPI to %u (reg value 0x%x)", cpi, value);
 
     /* set the cpi */
     uint8_t addr[] = {0x7F, PMW3610_REG_RES_STEP, 0x7F};
-    uint8_t data[] = {0xFF, value, 0x00};
+    uint8_t data[] = {0xFF, value,                0x00};
 
 	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
 	k_sleep(K_USEC(T_CLOCK_ON_DELAY_US));
@@ -142,65 +164,6 @@ static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi) {
 
     if (err) {
         LOG_ERR("Failed to set CPI");
-        return err;
-    }
-
-    return 0;
-}
-
-static int pmw3610_set_axis(const struct device *dev, bool swap_xy, bool inv_x, bool inv_y) {
-    LOG_INF("Setting axis swap_xy: %s inv_x: %s inv_y: %s", 
-            swap_xy ? "yes" : "no", inv_x ? "yes" : "no", inv_y ? "yes" : "no");
-
-    uint8_t value;
-    int err = pmw3610_read_reg(dev, PMW3610_REG_RES_STEP, &value);
-    if (err) {
-        LOG_ERR("Can't read res step %d", err);
-        return err;
-    }
-    LOG_INF("Get res step register (reg value 0x%x)", value);
-
-    // Convert axis to register value
-    // Set prefered RES_STEP
-    //   BIT 7: SWAP_XY
-    //   BIT 6: INV_X
-    //   BIT 5: INV_Y
-#if IS_ENABLED(CONFIG_PMW3610_SWAP_XY)
-    value |= (1 << 7);
-#else
-    if (swap_xy) { value |= (1 << 7); } else { value &= ~(1 << 7); }
-#endif
-#if IS_ENABLED(CONFIG_PMW3610_INVERT_X)
-    value |= (1 << 6);
-#else
-    if (inv_x) { value |= (1 << 6); } else { value &= ~(1 << 6); }
-#endif
-#if IS_ENABLED(CONFIG_PMW3610_INVERT_Y)
-    value |= (1 << 5);
-#else
-    if (inv_y) { value |= (1 << 5); } else { value &= ~(1 << 5); }
-#endif
-    LOG_INF("Setting RES_STEP to (reg value 0x%x)", value);
-
-    /* set the axis control register */
-    uint8_t addr[] = {0x7F, PMW3610_REG_RES_STEP, 0x7F};
-    uint8_t data[] = {0xFF, value, 0x00};
-
-	pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
-	k_sleep(K_USEC(T_CLOCK_ON_DELAY_US));
-
-    /* Write data */
-    for (size_t i = 0; i < sizeof(data); i++) {
-        err = pmw3610_write_reg(dev, addr[i], data[i]);
-        if (err) {
-            LOG_ERR("Burst write failed on SPI write (data)");
-            break;
-        }
-    }
-    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
-
-    if (err) {
-        LOG_ERR("Failed to set axis");
         return err;
     }
 
@@ -395,11 +358,7 @@ static int pmw3610_async_init_configure(const struct device *dev) {
     }
 
     if (!err) {
-        err = pmw3610_set_cpi(dev, config->cpi);
-    }
-
-    if (!err) {
-        err = pmw3610_set_axis(dev, config->swap_xy, config->inv_x, config->inv_y);
+        err = pmw3610_set_cpi(dev, config->cpi, config->swap_xy, config->inv_x, config->inv_y);
     }
 
     if (!err) {
@@ -636,6 +595,7 @@ static int pmw3610_init(const struct device *dev) {
 static int pmw3610_attr_set(const struct device *dev, enum sensor_channel chan,
                             enum sensor_attribute attr, const struct sensor_value *val) {
     struct pixart_data *data = dev->data;
+    const struct pixart_config *config = dev->config;
     int err;
 
     if (unlikely(chan != SENSOR_CHAN_ALL)) {
@@ -648,8 +608,9 @@ static int pmw3610_attr_set(const struct device *dev, enum sensor_channel chan,
     }
 
     switch ((uint32_t)attr) {
-    case PMW3610_ATTR_CPI:
-        err = pmw3610_set_cpi(dev, PMW3610_SVALUE_TO_CPI(*val));
+    case PMW3610_ALT_ATTR_CPI:
+        err = pmw3610_set_cpi(dev, PMW3610_SVALUE_TO_CPI(*val),
+                              config->swap_xy, config->inv_x, config->inv_y);
         break;
 
     case PMW3610_ATTR_RUN_DOWNSHIFT_TIME:
