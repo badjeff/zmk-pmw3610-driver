@@ -127,7 +127,7 @@ static int pmw3610_set_cpi(const struct device *dev, uint32_t cpi,
     LOG_INF("Setting axis swap_xy: %s inv_x: %s inv_y: %s", 
             swap_xy ? "yes" : "no", inv_x ? "yes" : "no", inv_y ? "yes" : "no");
 
-#if IS_ENABLED(CONFIG_PMW3610_ALT_SWAP_XY)
+#if IS_ENABLED(CONFIG_PMW3610_SWAP_XY)
     value |= (1 << 7);
 #else
     if (swap_xy) { value |= (1 << 7); } else { value &= ~(1 << 7); }
@@ -608,7 +608,7 @@ static int pmw3610_attr_set(const struct device *dev, enum sensor_channel chan,
     }
 
     switch ((uint32_t)attr) {
-    case PMW3610_ALT_ATTR_CPI:
+    case PMW3610_ATTR_CPI:
         err = pmw3610_set_cpi(dev, PMW3610_SVALUE_TO_CPI(*val),
                               config->swap_xy, config->inv_x, config->inv_y);
         break;
