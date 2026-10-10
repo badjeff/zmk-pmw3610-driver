@@ -94,6 +94,71 @@ config PMW3610_ALT_REST3_SAMPLE_TIME_MS
     help
       Default REST2 mode sample period in millisecond.
 
+config PMW3610_ALT_FRAME_CAPTURE
+  bool "Capture raw 22x22 pixel frames from PMW3610"
+  default n
+  help
+    Capture a full 484-byte pixel frame (22x22 array, datasheet p.17)
+    after each motion handling and keep the latest frame in a
+    double-buffered, mutex-protected array.
+
+config PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_ALWAYS
+  bool "Always skip motion x/y reports and only capture frames"
+  default n
+  depends on PMW3610_ALT_FRAME_CAPTURE
+  help
+    Skip the motion x/y report path unconditionally so only frame
+    capture runs. Cursor movement stops working. Takes precedence over
+    PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_WHEN_CAPTURE.
+
+config PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_WHEN_CAPTURE
+  bool "Skip motion x/y reports only while frame capture is running"
+  default n
+  depends on PMW3610_ALT_FRAME_CAPTURE
+  help
+    Skip the motion x/y report path only while the frame capture
+    scheduler is running (the host is requesting frames). Motion
+    reporting resumes once capture stops.
+
+config PMW3610_ALT_FRAME_CAPTURE_PERIOD_MS
+  int "Periodic frame capture interval in ms"
+  default 35
+  range 10 1000
+  depends on PMW3610_ALT_FRAME_CAPTURE
+  help
+    Interval in milliseconds between self-retriggered frame captures
+    while the host requests frames (streaming starts on a host get-frame
+    request and stops after PMW3610_ALT_FRAME_CAPTURE_IDLE_TIMEOUT_MS
+    without one).
+    Minimum is PMW3610_FRAME_GRAB_DELAY_MS (10ms FG_EN wait per capture).
+    Note: a value > 0 keeps the sensor/system busy and awake while streaming.
+
+config PMW3610_ALT_FRAME_CAPTURE_IDLE_TIMEOUT_MS
+  int "Capture scheduler idle timeout in ms"
+  default 1500
+  depends on PMW3610_ALT_FRAME_CAPTURE
+  help
+    Stop the periodic capture scheduler after this long without a host
+    get-frame request. The scheduler starts again on the next request.
+
+config PMW3610_ALT_FRAME_CAPTURE_HID_AUX
+  bool "Send captured frames to the host as a HID input report"
+  default y
+  depends on PMW3610_ALT_FRAME_CAPTURE
+  depends on ZMK_USB
+  help
+    Sends the captured frame to the host as a vendor HID input report
+    (report id 0x01, usage page 0xFF0C) split into 9 chunks of 56 bytes.
+    Requires CONFIG_USB_HID_DEVICE_COUNT >= 2 (and a matching
+    CONFIG_HID_INTERRUPT_EP_MPS, e.g. 64) so this module can claim the
+    HID_<n> device. Do not enable another vendor HID module on the
+    same HID device binding number.
+
+config PMW3610_ALT_FRAME_CAPTURE_HID_BINDING_NUM
+  int "Number to append to 'HID_' as parameter of device_get_binding() in pmw3610_hid.c"
+  default 1
+  depends on PMW3610_ALT_FRAME_CAPTURE
+
 module = PMW3610_ALT
 module-str = PMW3610_ALT
 source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"

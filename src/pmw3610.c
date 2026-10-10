@@ -10,9 +10,13 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/input/input.h>
 #include <zephyr/pm/device.h>
+#include <string.h>
 #include <zmk/keymap.h>
 #include <zmk/events/activity_state_changed.h>
 #include "pmw3610.h"
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_HID_AUX)
+#include "pmw3610_frame_hid.h"
+#endif
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_ALT_LOG_LEVEL);
@@ -506,6 +510,248 @@ static int pmw3610_report_data(const struct device *dev) {
     return err;
 }
 
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE)
+
+static void pmw3610_frame_transform(const struct device *dev, uint8_t *f) {
+    const struct pixart_config *cfg = dev->config;
+
+    /* Reindex the frame buffer into raster order (row-major, top-left first),
+    * following the pixel numbering in Figure 17 of the PMW3610DM-SUDU datasheet
+    * (p.33).
+    */
+    // uint8_t tmp[PMW3610_FRAME_PIXELS];
+    // for (int r = 0; r < PMW3610_FRAME_HEIGHT; r++) {
+    //     for (int c = 0; c < PMW3610_FRAME_WIDTH; c++) {
+    //         int src = PMW3610_FRAME_PIXELS
+    //                 - PMW3610_FRAME_WIDTH
+    //                 + r
+    //                 - c * PMW3610_FRAME_WIDTH;
+    //         tmp[r * PMW3610_FRAME_WIDTH + c] = f[src];
+    //     }
+    // }
+    // memcpy(f, tmp, sizeof(tmp));
+
+    bool swap = cfg->swap_xy;
+    bool inv_x = cfg->inv_x;
+    bool inv_y = cfg->inv_y;
+#if IS_ENABLED(CONFIG_PMW3610_ALT_SWAP_XY)
+    swap = true;
+#endif
+#if IS_ENABLED(CONFIG_PMW3610_ALT_INVERT_X)
+    inv_x = true;
+#endif
+#if IS_ENABLED(CONFIG_PMW3610_ALT_INVERT_Y)
+    inv_y = true;
+#endif
+    if (!swap && !inv_x && !inv_y) {
+        return;
+    }
+
+    if (swap) {
+        for (int y = 1; y < PMW3610_FRAME_HEIGHT; y++) {
+            for (int x = 0; x < y; x++) {
+                uint8_t *a = &f[y * PMW3610_FRAME_WIDTH + x];
+                uint8_t *b = &f[x * PMW3610_FRAME_WIDTH + y];
+                uint8_t t = *a;
+                *a = *b;
+                *b = t;
+            }
+        }
+    }
+    // if (inv_x) {
+    //     for (int y = 0; y < PMW3610_FRAME_HEIGHT; y++) {
+    //         uint8_t *row = &f[y * PMW3610_FRAME_WIDTH];
+    //         for (int x = 0; x < PMW3610_FRAME_WIDTH / 2; x++) {
+    //             uint8_t t = row[x];
+    //             row[x] = row[PMW3610_FRAME_WIDTH - 1 - x];
+    //             row[PMW3610_FRAME_WIDTH - 1 - x] = t;
+    //         }
+    //     }
+    // }
+    // if (inv_y) {
+    //     for (int y = 0; y < PMW3610_FRAME_HEIGHT / 2; y++) {
+    //         uint8_t *r0 = &f[y * PMW3610_FRAME_WIDTH];
+    //         uint8_t *r1 = &f[(PMW3610_FRAME_HEIGHT - 1 - y) * PMW3610_FRAME_WIDTH];
+    //         for (int x = 0; x < PMW3610_FRAME_WIDTH; x++) {
+    //             uint8_t t = r0[x];
+    //             r0[x] = r1[x];
+    //             r1[x] = t;
+    //         }
+    //     }
+    // }
+}
+
+/* Same transfer as pmw3610_read() but with a 16-bit length, needed for
+ * the 484-byte frame burst read (pmw3610_read() keeps uint8_t len).
+ * Continuous SCLK, one single transceive, NCS driven by the driver.
+ */
+static int pmw3610_read_burst(const struct device *dev, uint8_t addr, uint8_t *value, uint16_t len) {
+	const struct pixart_config *cfg = dev->config;
+	const struct spi_buf tx_buf = { .buf = &addr, .len = sizeof(addr) };
+	const struct spi_buf_set tx = { .buffers = &tx_buf, .count = 1 };
+	struct spi_buf rx_buf[] = {
+		{ .buf = NULL, .len = sizeof(addr), },
+		{ .buf = value, .len = len, },
+	};
+	const struct spi_buf_set rx = { .buffers = rx_buf, .count = ARRAY_SIZE(rx_buf) };
+	return spi_transceive_dt(&cfg->spi, &tx, &rx);
+}
+
+int pmw3610_capture_frame(const struct device *dev) {
+    struct pixart_data *data = dev->data;
+    int err = 0;
+
+    if (unlikely(!data->ready)) {
+        return -EBUSY;
+    }
+
+    if (!atomic_cas(&data->capture_busy, false, true)) {
+        return -EBUSY;
+    }
+
+    /* Frame capture sequence, PMW3610DM-SUDU datasheet p.17:
+     * 1. write 0xF1 to PERFORMANCE (disable rest); during a session this is
+     *    done once by pmw3610_capture_request(), so only do it for ad-hoc calls
+     * 2. turn SPI clock on, wait t_CLOCK_ON (300us)
+     * 3. write 0x10 to reg 0x32 (test clock on)
+     * 4. write 0x80 to FRAME_GRAB (assert FG_EN)
+     * 5. wait 10ms
+     * 6./7. burst read the 484 pixel bytes from 0x12, then release NCS.
+     * The SPI clock is held ON through the raw writes and the burst read
+     * (pmw3610_write() would drop it in between).
+     */
+    if (atomic_get(&data->capture_running) == 0) {
+        err = pmw3610_write(dev, PMW3610_REG_PERFORMANCE, PMW3610_PERF_DISABLE_REST);
+    }
+    if (err == 0) {
+        err = pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_ENABLE);
+    }
+    if (err == 0) {
+        k_sleep(K_USEC(T_CLOCK_ON_DELAY_US));
+        err = pmw3610_write_reg(dev, PMW3610_REG_TEST_CLOCK, 0x10); // test clock on
+    }
+    if (err == 0) {
+        err = pmw3610_write_reg(dev, PMW3610_REG_FRAME_GRAB, BIT(7)); // FG_EN
+    }
+    if (err == 0) {
+        k_msleep(PMW3610_FRAME_GRAB_DELAY_MS);
+
+        uint8_t *frame = data->frame_buf[data->frame_wr];
+        err = pmw3610_read_burst(dev, PMW3610_REG_MOTION_BURST, frame, PMW3610_FRAME_PIXELS);
+    }
+
+    pmw3610_write_reg(dev, PMW3610_REG_SPI_CLK_ON_REQ, PMW3610_SPI_CLOCK_CMD_DISABLE);
+
+    if (err == 0) {
+        pmw3610_frame_transform(dev, data->frame_buf[data->frame_wr]);
+
+        k_mutex_lock(&data->frame_lock, K_FOREVER);
+        data->frame_rd = data->frame_wr;
+        data->frame_wr ^= 1U;
+        data->frame_seq++;
+        data->frame_valid = true;
+        k_mutex_unlock(&data->frame_lock);
+    }
+
+    if (err) {
+        LOG_ERR("Frame capture failed: %d", err);
+    }
+
+    atomic_clear(&data->capture_busy);
+
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_HID_AUX)
+    if (err == 0) {
+        pmw3610_frame_hid_signal(dev);
+    }
+#endif
+
+    return err;
+}
+
+int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len, uint32_t *seq) {
+    struct pixart_data *data = dev->data;
+
+    if (len < PMW3610_FRAME_PIXELS) {
+        return -EINVAL;
+    }
+
+    k_mutex_lock(&data->frame_lock, K_FOREVER);
+    if (!data->frame_valid) {
+        k_mutex_unlock(&data->frame_lock);
+        return -ENODATA;
+    }
+    memcpy(dst, data->frame_buf[data->frame_rd], PMW3610_FRAME_PIXELS);
+    if (len >= PMW3610_FRAME_PIXELS + PMW3610_FRAME_TAILER) {
+        memset(dst + PMW3610_FRAME_PIXELS, 0, PMW3610_FRAME_TAILER);
+    }
+    if (seq != NULL) {
+        *seq = data->frame_seq;
+    }
+    k_mutex_unlock(&data->frame_lock);
+
+    return 0;
+}
+
+static void pmw3610_capture_work_handler(struct k_work *work) {
+    struct k_work_delayable *work2 = (struct k_work_delayable *)work;
+    struct pixart_data *data = CONTAINER_OF(work2, struct pixart_data, capture_work);
+
+    pmw3610_capture_frame(data->dev);
+
+    if ((k_uptime_get_32() - data->capture_last_request) <
+        CONFIG_PMW3610_ALT_FRAME_CAPTURE_IDLE_TIMEOUT_MS) {
+        k_work_schedule(&data->capture_work, K_MSEC(CONFIG_PMW3610_ALT_FRAME_CAPTURE_PERIOD_MS));
+    } else {
+        atomic_set(&data->capture_running, 0);
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_ALWAYS) || \
+    IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_WHEN_CAPTURE)
+        // capture session ends: flush the motion deltas the sensor accumulated
+        // while the report path was suppressed, else they stay pending
+        {
+            uint8_t motion[PMW3610_BURST_SIZE];
+
+            pmw3610_read(data->dev, PMW3610_REG_MOTION_BURST, motion, sizeof(motion));
+        }
+#endif
+        // restore the normal performance mode the frame capture disabled
+        pmw3610_set_performance(data->dev, true);
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_WHEN_CAPTURE)
+        pmw3610_set_interrupt(data->dev, true);
+#endif
+        LOG_INF("PMW3610 frame capture scheduler stopped");
+    }
+}
+
+void pmw3610_capture_request(const struct device *dev) {
+    struct pixart_data *data = dev->data;
+
+    if (unlikely(!data->ready)) {
+        return;
+    }
+
+    data->capture_last_request = k_uptime_get_32();
+    if (atomic_cas(&data->capture_running, 0, 1)) {
+        // disable rest for the whole session (datasheet p.17 step 1), restored
+        // by pmw3610_set_performance() when the session ends
+        pmw3610_write(dev, PMW3610_REG_PERFORMANCE, PMW3610_PERF_DISABLE_REST);
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_WHEN_CAPTURE)
+        // capture session starts: drop deltas accumulated before it, reporting
+        // resumes when the session ends
+        data->dx = 0;
+        data->dy = 0;
+#if CONFIG_PMW3610_ALT_REPORT_INTERVAL_MIN > 0
+        data->last_smp_time = 0;
+        data->last_rpt_time = 0;
+#endif
+        data->sw_smart_flag = false;
+#endif
+        k_work_schedule(&data->capture_work, K_NO_WAIT);
+        LOG_INF("PMW3610 frame capture scheduler started");
+    }
+}
+
+#endif // CONFIG_PMW3610_ALT_FRAME_CAPTURE
+
 static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callback *cb,
                                   uint32_t pins) {
     struct pixart_data *data = CONTAINER_OF(cb, struct pixart_data, irq_gpio_cb);
@@ -517,6 +763,18 @@ static void pmw3610_gpio_callback(const struct device *gpiob, struct gpio_callba
 static void pmw3610_work_callback(struct k_work *work) {
     struct pixart_data *data = CONTAINER_OF(work, struct pixart_data, trigger_work);
     const struct device *dev = data->dev;
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_ALWAYS)
+    bool skip = true;
+#elif IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_WHEN_CAPTURE)
+    bool skip = atomic_get(&data->capture_running) != 0;
+#else
+    bool skip = false;
+#endif
+
+    if (skip) {
+        return;
+    }
+
     pmw3610_report_data(dev);
     pmw3610_set_interrupt(dev, true);
 }
@@ -571,6 +829,19 @@ static int pmw3610_init(const struct device *dev) {
 
     // init smart algorithm flag;
     data->sw_smart_flag = false;
+
+#if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE)
+    // init the double-buffered frame capture state
+    k_mutex_init(&data->frame_lock);
+    data->frame_rd = 0;
+    data->frame_wr = 0;
+    data->frame_seq = 0;
+    data->frame_valid = false;
+    atomic_clear(&data->capture_busy);
+    data->capture_last_request = 0;
+    atomic_set(&data->capture_running, 0);
+    k_work_init_delayable(&data->capture_work, pmw3610_capture_work_handler);
+#endif
 
     // init trigger handler work
     k_work_init(&data->trigger_work, pmw3610_work_callback);

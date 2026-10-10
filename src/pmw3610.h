@@ -70,6 +70,18 @@ extern "C" {
 #define PMW3610_SPI_CLOCK_CMD_ENABLE 0xBA
 #define PMW3610_SPI_CLOCK_CMD_DISABLE 0xB5
 
+#if defined(CONFIG_PMW3610_ALT_FRAME_CAPTURE)
+#define PMW3610_REG_TEST_CLOCK 0x32
+#define PMW3610_PERF_DISABLE_REST 0xF1
+#define PMW3610_FRAME_GRAB_DELAY_MS 10
+
+int pmw3610_capture_frame(const struct device *dev);
+
+void pmw3610_capture_request(const struct device *dev);
+
+int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len, uint32_t *seq);
+#endif // CONFIG_PMW3610_ALT_FRAME_CAPTURE
+
 /* Max register count readable in a single motion burst */
 #define PMW3610_MAX_BURST_SIZE 10
 

@@ -1,0 +1,11 @@
+[package]
+name = "zmk-pmw3610-driver-hid-aux"
+version = "0.1.0"
+edition = "2024"
+default-run = "zmk-pmw3610-driver-hid-aux"
+
+[dependencies]
+anyhow = "1"
+enigo = "0.6"
+hidapi = "2"
+minifb = "0.28"

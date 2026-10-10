@@ -132,6 +132,24 @@ CONFIG_PMW3610_ALT=y
 # CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS=300 // <--see Troubleshooting
 ```
 
+## Live Frame Capture
+
+The `hid-aux` tool lets you watch live frames and the driver's LK motion estimate from a PC. It requires the Rust toolchain and the platform `hidapi` library (e.g. `brew install hidapi` on macOS). The tool connects via HID (USB only) and requests to start frame capture from the device. The device stops frame capturing after 1500ms without request from HID host.
+
+```shell
+cd zmk-pmw3610-driver/hid-aux
+cargo run --release
+```
+
+Requires additional config in `<shield>.config` file to enable live frame capturing and aux HID Usage, read the Kconfig file to find out all possible options:
+
+```conf
+CONFIG_PMW3610_ALT_FRAME_CAPTURE=y
+CONFIG_PMW3610_ALT_FRAME_CAPTURE_HID_BINDING_NUM=1
+CONFIG_USB_HID_DEVICE_COUNT=2
+CONFIG_HID_INTERRUPT_EP_MPS=64
+```
+
 ## Troubleshooting
 
 If you are getting `Incorrect product id 0xFF (expecting 0x3E)!` on `nice_nano_v2` board from the log, you'd want to apply `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS=1000` in your shield .conf/.overlay file. Due to this driver doesn't offer module dependancy setting, that would ensure external power (to enable VCC pin on board) is ready, the `CONFIG_PMW3610_ALT_INIT_POWER_UP_EXTRA_DELAY_MS` would use to add extra one second delay of power up.
