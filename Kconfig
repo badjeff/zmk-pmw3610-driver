@@ -122,8 +122,8 @@ config PMW3610_ALT_FRAME_CAPTURE_SKIP_REPORT_WHEN_CAPTURE
 
 config PMW3610_ALT_FRAME_CAPTURE_PERIOD_MS
   int "Periodic frame capture interval in ms"
-  default 35
-  range 10 1000
+  default 10
+  range 5 1000
   depends on PMW3610_ALT_FRAME_CAPTURE
   help
     Interval in milliseconds between self-retriggered frame captures
@@ -131,7 +131,6 @@ config PMW3610_ALT_FRAME_CAPTURE_PERIOD_MS
     request and stops after PMW3610_ALT_FRAME_CAPTURE_IDLE_TIMEOUT_MS
     without one).
     Minimum is PMW3610_FRAME_GRAB_DELAY_MS (10ms FG_EN wait per capture).
-    Note: a value > 0 keeps the sensor/system busy and awake while streaming.
 
 config PMW3610_ALT_FRAME_CAPTURE_IDLE_TIMEOUT_MS
   int "Capture scheduler idle timeout in ms"

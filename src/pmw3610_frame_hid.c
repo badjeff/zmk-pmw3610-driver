@@ -74,7 +74,7 @@ static K_SEM_DEFINE(frame_ready_sem, 0, 1);
 static K_SEM_DEFINE(hid_in_sem, 1, 1);
 
 static struct pmw3610_frame_report last_sent_report; // for GET_REPORT
-static uint8_t frame_copy[PMW3610_FRAME_PIXELS + PMW3610_FRAME_TAILER];
+static uint8_t frame_copy[PMW3610_FRAME_PIXELS];
 
 void pmw3610_frame_hid_signal(const struct device *dev) {
     pending_dev = dev;
@@ -124,7 +124,7 @@ static int pmw3610_usb_send_report(const uint8_t *report, size_t len) {
     case USB_DC_UNKNOWN:
         return -ENODEV;
     default:
-        if (k_sem_take(&hid_in_sem, K_MSEC(10)) != 0) {
+        if (k_sem_take(&hid_in_sem, K_MSEC(5)) != 0) {
             return -EAGAIN;
         }
         int err = hid_int_ep_write(hid_dev, report, len, NULL);

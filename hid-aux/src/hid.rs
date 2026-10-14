@@ -14,14 +14,14 @@ const VENDOR_USAGE_PAGE: u16 = 0xFF0C;
 const VENDOR_USAGE: u16 = 0x01;
 
 const MAGIC: u8 = 0xA5;
-const CHUNK_PAYLOAD: usize = 56;
+const CHUNK_PAYLOAD: usize = 44;
 const CHUNKS: usize = FRAME_LEN.div_ceil(CHUNK_PAYLOAD);
 
 const FRAME_REPORT_ID: u8 = 0x01;
 const REQUEST_INTERVAL: Duration = Duration::from_millis(250);
 
 fn request_frame(device: &HidDevice) {
-    let mut buf = [0u8; 62];
+    let mut buf = [0u8; 6 + CHUNK_PAYLOAD];
     buf[0] = FRAME_REPORT_ID;
     let _ = device.get_input_report(&mut buf);
 }

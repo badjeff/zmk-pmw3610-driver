@@ -17,7 +17,7 @@ use visual::{VisualConfig, VisualOutput};
 
 // OS cursor follow (toggle with T). `v.dx_counts`/`v.dy_counts` are already in
 // sensor pixel counts; scale them into OS pixels here.
-const CURSOR_GAIN: f32 = 10.0;
+const CURSOR_GAIN: f32 = 5.0;
 const CURSOR_MAX_DELTA: i32 = 50;
 const CURSOR_FLIP_X: bool = true;
 const CURSOR_FLIP_Y: bool = true;
@@ -101,16 +101,14 @@ fn main() -> Result<()> {
         }
 
         if fps_window.elapsed() >= Duration::from_secs(1) {
-            let fps = fps_frames as f64 / fps_window.elapsed().as_secs_f64();
             fps_frames = 0;
             fps_window = Instant::now();
-            ui.set_title(fps);
         }
 
-        let fps_now = fps_frames as f64 / fps_window.elapsed().as_secs_f64();
+        let fps_now = (fps_frames as f64 / fps_window.elapsed().as_secs_f64()).floor();
         let cur_state = if cursor_enabled { "on" } else { "off" };
         let status = format!(
-            "cur:{:>3} {:>3.0}fps t{:>7} v{:>7}",
+            "cur:{:>3}  {:>3.0}fps  t{:>7}  v{:>7}",
             cur_state, fps_now, total_frames, v.frames
         );
         let sub = format!(

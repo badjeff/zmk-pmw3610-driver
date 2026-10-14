@@ -681,9 +681,6 @@ int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len, uint32
         return -ENODATA;
     }
     memcpy(dst, data->frame_buf[data->frame_rd], PMW3610_FRAME_PIXELS);
-    if (len >= PMW3610_FRAME_PIXELS + PMW3610_FRAME_TAILER) {
-        memset(dst + PMW3610_FRAME_PIXELS, 0, PMW3610_FRAME_TAILER);
-    }
     if (seq != NULL) {
         *seq = data->frame_seq;
     }

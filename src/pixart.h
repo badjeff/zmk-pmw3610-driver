@@ -22,20 +22,11 @@ extern "C" {
 #define PMW3610_FRAME_HEIGHT 22
 #define PMW3610_FRAME_PIXELS (PMW3610_FRAME_WIDTH * PMW3610_FRAME_HEIGHT)
 
-/* Chunked vendor input report: the 484-byte frame plus PMW3610_FRAME_TAILER
- * bytes of zero pad (504 bytes total) are sent as 9 chunks of 56 bytes, so the
- * full report is 1 + 5 + 56 = 62 bytes and fits a single 64-byte full speed
- * interrupt packet. The 9th chunk carries pixels 448..483 then the pad.
- *
- * The pad rounds the frame up to an exact multiple of the chunk payload, so
- * there is never a short trailing chunk.
+/* Chunked input report: the 484-byte frame are sent as 11 chunks of 44 bytes.
+ * And fits a single 64-byte interrupt packet.
  */
-#define PMW3610_FRAME_CHUNK_PAYLOAD 56
-#define PMW3610_FRAME_TAILER                                                    \
-    ((PMW3610_FRAME_CHUNK_PAYLOAD -                                             \
-      (PMW3610_FRAME_PIXELS % PMW3610_FRAME_CHUNK_PAYLOAD)) %                   \
-     PMW3610_FRAME_CHUNK_PAYLOAD)
-#define PMW3610_FRAME_TOTAL (PMW3610_FRAME_PIXELS + PMW3610_FRAME_TAILER)
+#define PMW3610_FRAME_CHUNK_PAYLOAD 44
+#define PMW3610_FRAME_TOTAL PMW3610_FRAME_PIXELS
 #define PMW3610_FRAME_CHUNKS (PMW3610_FRAME_TOTAL / PMW3610_FRAME_CHUNK_PAYLOAD)
 #endif
 

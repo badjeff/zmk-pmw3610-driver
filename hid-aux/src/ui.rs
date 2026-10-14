@@ -103,7 +103,7 @@ pub struct Ui {
 impl Ui {
     pub fn new() -> Result<Self> {
         let mut window = Window::new(
-            "PMW3610 frame",
+            "PMW3610 frame capture",
             WIN_W,
             WIN_H,
             WindowOptions {
@@ -149,10 +149,6 @@ impl Ui {
                 }
             }
         }
-    }
-
-    pub fn set_title(&mut self, fps: f64) {
-        self.window.set_title(&format!("PMW3610 | {:.1} fps", fps));
     }
 
     /// Render one frame's view and present it.
