@@ -17,7 +17,7 @@ use visual::{VisualConfig, VisualOutput};
 
 // OS cursor follow (toggle with T). `v.dx_counts`/`v.dy_counts` are already in
 // sensor pixel counts; scale them into OS pixels here.
-const CURSOR_GAIN: f32 = 5.0;
+const CURSOR_GAIN: f32 = 2.0;
 const CURSOR_MAX_DELTA: i32 = 50;
 const CURSOR_FLIP_X: bool = true;
 const CURSOR_FLIP_Y: bool = true;
