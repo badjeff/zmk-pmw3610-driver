@@ -134,14 +134,9 @@ CONFIG_PMW3610_ALT=y
 
 ## Live Frame Capture
 
-The `hid-aux` tool lets you watch live frames and the driver's LK motion estimate from a PC. It requires the Rust toolchain and the platform `hidapi` library (e.g. `brew install hidapi` on macOS). The tool connects via HID (USB only) and requests to start frame capture from the device. The device stops frame capturing after 1500ms without request from HID host.
+`hid-aux` is the GUI tool lets you watch live frames and the driver's LK motion estimate from a PC. It requires the Rust toolchain ([rustup](https://rustup.rs/)) and the platform `hidapi` library (e.g. `brew install hidapi` on macOS). The tool connects via HID USB only, would run on central shield at this moment.
 
-```shell
-cd zmk-pmw3610-driver/hid-aux
-cargo run --release
-```
-
-Requires additional config in `<shield>.config` file to enable live frame capturing and aux HID Usage, read the Kconfig file to find out all possible options:
+To enable live frame capturing, add below additional config in `<shield>.config` file. Read Kconfig file to find out more options.
 
 ```conf
 CONFIG_PMW3610_ALT_FRAME_CAPTURE=y
@@ -151,6 +146,20 @@ CONFIG_ENABLE_HID_INT_OUT_EP=y
 CONFIG_USB_HID_POLL_INTERVAL_MS=1
 CONFIG_HID_INTERRUPT_EP_MPS=64
 ```
+
+Execute below commands in your termianl to live frame viewer GUI on the USB host.
+
+```shell
+cd zmk-pmw3610-driver/hid-aux
+cargo run --release
+```
+
+On the app launch, it will requests to start frame capture from the device. The peripheral will switch to capture mode and stop reporting HID pointing/cursor inputs to the host. The device will stop frame capturing after 1500ms without request from host, switch back to normal mode and resume HID pointing/cursor reports.
+
+While capturing, press `T`, would toggle LK motion estimate pipeline, enable **EXPERIMENTAL** host side virtual mouse powered by vision tracking.
+
+<img src="./hid-aux/hid-aux.png" width="400">
+
 
 ## Troubleshooting
 
