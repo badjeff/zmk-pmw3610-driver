@@ -22,9 +22,6 @@ extern "C" {
 #define PMW3610_FRAME_HEIGHT 22
 #define PMW3610_FRAME_PIXELS (PMW3610_FRAME_WIDTH * PMW3610_FRAME_HEIGHT)
 
-/* Chunked input report: the 484-byte frame are sent as 11 chunks of 44 bytes.
- * And fits a single 64-byte interrupt packet.
- */
 #define PMW3610_FRAME_CHUNK_PAYLOAD 44
 #define PMW3610_FRAME_TOTAL PMW3610_FRAME_PIXELS
 #define PMW3610_FRAME_CHUNKS (PMW3610_FRAME_TOTAL / PMW3610_FRAME_CHUNK_PAYLOAD)
@@ -45,7 +42,6 @@ struct pixart_data {
     uint8_t                      frame_buf[2][PMW3610_FRAME_PIXELS];
     uint8_t                      frame_rd;
     uint8_t                      frame_wr;
-    uint32_t                     frame_seq;
     bool                         frame_valid;
     atomic_t                     capture_busy;
     uint32_t                     capture_last_request;

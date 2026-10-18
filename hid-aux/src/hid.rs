@@ -13,15 +13,42 @@ pub const FRAME_LEN: usize = FRAME_W * FRAME_H;
 const VENDOR_USAGE_PAGE: u16 = 0xFF0C;
 const VENDOR_USAGE: u16 = 0x01;
 
-const MAGIC: u8 = 0xA5;
+const FRAME_REPORT_ID: u8 = 0x01;
+/// Report layout, mirrors `struct pmw3610_frame_report` in the firmware:
+/// `report_id (1) | meta (1) | payload (CHUNK_PAYLOAD)`. The payload size is
+/// static on both sides, so there is no len field.
+const HEADER_LEN: usize = 2;
 const CHUNK_PAYLOAD: usize = 44;
 const CHUNKS: usize = FRAME_LEN.div_ceil(CHUNK_PAYLOAD);
-
-const FRAME_REPORT_ID: u8 = 0x01;
 const REQUEST_INTERVAL: Duration = Duration::from_millis(250);
 
+// the frame must tile exactly: a short last chunk could not be expressed
+// without a len field
+const _: () = assert!(CHUNKS * CHUNK_PAYLOAD == FRAME_LEN);
+
+/// The meta byte, mirrors `struct pmw3610_frame_meta`: `[recog:4 | chunk_left:4]`.
+/// The fixed recognizer nibble lets the host find the header whether or not the
+/// hidapi backend strips the report id (id 0x01 has a clear high nibble), and
+/// chunk_left counts down `CHUNKS - 1 -> 0` (the first report of every frame).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Meta(u8);
+
+impl Meta {
+    const RECOG_MASK: u8 = 0xF0;
+    const RECOG: u8 = 0xA0;
+    const CHUNK_LEFT_MASK: u8 = 0x0F;
+
+    fn is_valid(byte: u8) -> bool {
+        byte & Self::RECOG_MASK == Self::RECOG
+    }
+
+    fn chunk_left(self) -> u8 {
+        self.0 & Self::CHUNK_LEFT_MASK
+    }
+}
+
 fn request_frame(device: &HidDevice) {
-    let mut buf = [0u8; 6 + CHUNK_PAYLOAD];
+    let mut buf = [0u8; HEADER_LEN + CHUNK_PAYLOAD];
     buf[0] = FRAME_REPORT_ID;
     let _ = device.get_input_report(&mut buf);
 }
@@ -29,7 +56,6 @@ fn request_frame(device: &HidDevice) {
 struct FrameAssembler {
     buf: [u8; FRAME_LEN],
     got: [bool; CHUNKS],
-    seq: Option<u8>,
 }
 
 impl FrameAssembler {
@@ -37,24 +63,20 @@ impl FrameAssembler {
         Self {
             buf: [0; FRAME_LEN],
             got: [false; CHUNKS],
-            seq: None,
         }
     }
 
-    fn push(&mut self, seq: u8, chunk: u8, len: usize, payload: &[u8]) -> Option<[u8; FRAME_LEN]> {
-        if self.seq != Some(seq) {
-            self.seq = Some(seq);
+    fn push(&mut self, chunk_left: u8, payload: &[u8]) -> Option<[u8; FRAME_LEN]> {
+        // chunk_left counts down: the first report of a frame always carries
+        // CHUNKS-1, which retires any partially received previous frame
+        if chunk_left as usize == CHUNKS - 1 {
             self.got = [false; CHUNKS];
         }
 
-        if payload.len() < len {
-            return None;
-        }
-
-        let off = chunk as usize * CHUNK_PAYLOAD;
-        let n = len.min(FRAME_LEN - off);
-        self.buf[off..off + n].copy_from_slice(&payload[..n]);
-        self.got[chunk as usize] = true;
+        let idx = CHUNKS - 1 - chunk_left as usize;
+        let off = idx * CHUNK_PAYLOAD;
+        self.buf[off..off + CHUNK_PAYLOAD].copy_from_slice(payload);
+        self.got[idx] = true;
 
         if self.got.iter().all(|&g| g) {
             self.got = [false; CHUNKS];
@@ -70,32 +92,29 @@ impl FrameAssembler {
 }
 
 fn handle_report(data: &[u8], asm: &mut FrameAssembler) -> Option<[u8; FRAME_LEN]> {
-    // report id may be stripped by the hidapi backend
-    let m = if data.get(1) == Some(&MAGIC) {
-        1
-    } else if data.first() == Some(&MAGIC) {
+    // the meta byte carries a fixed recognizer nibble, so the header can be
+    // found whether or not the hidapi backend strips the report id; testing
+    // index 0 first is safe because the report id (0x01) never matches it
+    let m = if data.first().copied().is_some_and(Meta::is_valid) {
         0
+    } else if data.first() == Some(&FRAME_REPORT_ID)
+        && data.get(1).copied().is_some_and(Meta::is_valid)
+    {
+        1
     } else {
         return None;
     };
 
-    let seq = *data.get(m + 1)?;
-    let chunk = *data.get(m + 2)?;
-    let total = *data.get(m + 3)?;
-    let len = *data.get(m + 4)? as usize;
-
-    if total as usize != CHUNKS || chunk as usize >= CHUNKS {
+    let meta = Meta(*data.get(m)?);
+    let chunk_left = meta.chunk_left();
+    if chunk_left as usize >= CHUNKS {
         return None;
     }
 
-    let end = m + 5 + len;
-    let payload = data.get(m + 5..end)?;
-    
-    // let hex = payload.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-    // println!("CHUNK {} seq={} len={} payload_len={} off={} n={}", chunk, seq, len, payload.len(), chunk as usize * CHUNK_PAYLOAD, len.min(FRAME_LEN - chunk as usize * CHUNK_PAYLOAD));
-    // println!("  PAYLOAD: {}", hex);
-    
-    asm.push(seq, chunk, len, payload)
+    // payload size is static on both sides, no len field to consult
+    let payload = data.get(m + 1..m + 1 + CHUNK_PAYLOAD)?;
+
+    asm.push(chunk_left, payload)
 }
 
 pub type FrameMsg = (u64, [u8; FRAME_LEN]);

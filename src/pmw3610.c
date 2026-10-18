@@ -648,7 +648,6 @@ int pmw3610_capture_frame(const struct device *dev) {
         k_mutex_lock(&data->frame_lock, K_FOREVER);
         data->frame_rd = data->frame_wr;
         data->frame_wr ^= 1U;
-        data->frame_seq++;
         data->frame_valid = true;
         k_mutex_unlock(&data->frame_lock);
     }
@@ -668,7 +667,7 @@ int pmw3610_capture_frame(const struct device *dev) {
     return err;
 }
 
-int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len, uint32_t *seq) {
+int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len) {
     struct pixart_data *data = dev->data;
 
     if (len < PMW3610_FRAME_PIXELS) {
@@ -681,9 +680,6 @@ int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len, uint32
         return -ENODATA;
     }
     memcpy(dst, data->frame_buf[data->frame_rd], PMW3610_FRAME_PIXELS);
-    if (seq != NULL) {
-        *seq = data->frame_seq;
-    }
     k_mutex_unlock(&data->frame_lock);
 
     return 0;
@@ -832,7 +828,6 @@ static int pmw3610_init(const struct device *dev) {
     k_mutex_init(&data->frame_lock);
     data->frame_rd = 0;
     data->frame_wr = 0;
-    data->frame_seq = 0;
     data->frame_valid = false;
     atomic_clear(&data->capture_busy);
     data->capture_last_request = 0;

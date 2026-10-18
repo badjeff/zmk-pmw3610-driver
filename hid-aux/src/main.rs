@@ -24,18 +24,9 @@ const CURSOR_FLIP_Y: bool = true;
 
 /// Convert one visual frame's relative counts into a synthetic OS cursor move.
 /// Origin of the screen (and enigo's coordinate space) is top-left, y grows
-/// downward. Only moves once per new visual frame (gated on `v.frames`).
-fn apply_cursor(
-    enigo: &mut Enigo,
-    v: &VisualOutput,
-    acc: &mut (f32, f32),
-    last_frame: &mut u64,
-    warned: &mut bool,
-) {
-    if v.frames == *last_frame {
-        return;
-    }
-    *last_frame = v.frames;
+/// downward. Callers gate on new output (`Visual::poll_output`) so each
+/// snapshot moves the cursor once.
+fn apply_cursor(enigo: &mut Enigo, v: &VisualOutput, acc: &mut (f32, f32), warned: &mut bool) {
     if !v.valid {
         return;
     }
@@ -81,24 +72,24 @@ fn main() -> Result<()> {
 
     let mut frame_data = [0u8; FRAME_LEN];
 
-    let mut total_frames: u64 = 0;
     let mut fps_frames: u32 = 0;
     let mut fps_window = Instant::now();
     let mut cursor_enabled = false;
     let mut cursor_acc = (0.0f32, 0.0f32);
-    let mut cursor_last_frame: u64 = 0;
+    let mut cursor_seen: u64 = 0;
     let mut cursor_warned = false;
 
     loop {
         let delta = reader.poll(&mut frame_data);
-        total_frames += delta;
         fps_frames += delta as u32;
 
-        let v = visual.snapshot();
-
-        if cursor_enabled {
-            apply_cursor(&mut enigo, &v, &mut cursor_acc, &mut cursor_last_frame, &mut cursor_warned);
+        if cursor_enabled
+            && let Some(v) = visual.poll_output(&mut cursor_seen)
+        {
+            apply_cursor(&mut enigo, &v, &mut cursor_acc, &mut cursor_warned);
         }
+
+        let v = visual.snapshot();
 
         if fps_window.elapsed() >= Duration::from_secs(1) {
             fps_frames = 0;
@@ -107,21 +98,15 @@ fn main() -> Result<()> {
 
         let fps_now = (fps_frames as f64 / fps_window.elapsed().as_secs_f64()).floor();
         let cur_state = if cursor_enabled { "on" } else { "off" };
-        let status = format!(
-            "cur:{:>3}  {:>3.0}fps  t{:>7}  v{:>7}",
-            cur_state, fps_now, total_frames, v.frames
-        );
-        let sub = format!(
-            "[lk] r{:>7.1},{:>7.1} c{:>2}",
-            v.dx_counts, v.dy_counts, v.confidence / 100
-        );
+        let status = format!("cur:{:>3}  fps:{:>2}", cur_state, fps_now);
+        let sub = format!("x:{:>7.1}     y:{:>7.1}", v.dx_counts, v.dy_counts);
         let help = "[T]cursor  [Q]quit";
 
         let inp = ui.poll();
         if inp.toggle_cursor {
             cursor_enabled = !cursor_enabled;
             cursor_acc = (0.0, 0.0);
-            cursor_last_frame = v.frames;
+            visual.poll_output(&mut cursor_seen); // skip the output current at enable time
         }
 
         ui.render(&frame_data, &v, &status, &sub, help)?;

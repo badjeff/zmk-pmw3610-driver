@@ -79,7 +79,7 @@ int pmw3610_capture_frame(const struct device *dev);
 
 void pmw3610_capture_request(const struct device *dev);
 
-int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len, uint32_t *seq);
+int pmw3610_get_frame(const struct device *dev, uint8_t *dst, size_t len);
 #endif // CONFIG_PMW3610_ALT_FRAME_CAPTURE
 
 /* Max register count readable in a single motion burst */

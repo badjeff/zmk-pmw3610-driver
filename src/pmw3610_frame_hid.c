@@ -24,24 +24,28 @@ LOG_MODULE_REGISTER(pmw3610_frame_hid, CONFIG_PMW3610_ALT_LOG_LEVEL);
 #if IS_ENABLED(CONFIG_PMW3610_ALT_FRAME_CAPTURE_HID_AUX)
 
 #define PMW3610_FRAME_REPORT_ID 0x01
-#define PMW3610_FRAME_REPORT_MAGIC 0xA5
+#define PMW3610_FRAME_META_RECOG 0xA
 
 /* preemptible, well below the system workqueue (-1) so capturing/input
  * never waits on USB
  */
 #define PMW3610_FRAME_HID_THREAD_PRIO 7
 
+struct pmw3610_frame_meta {
+    uint8_t chunk_left : 4;
+    uint8_t recog      : 4;
+} __packed;
+
 struct pmw3610_frame_report {
     uint8_t report_id;
-    uint8_t magic;  // PMW3610_FRAME_REPORT_MAGIC, lets the host find the
-                    // payload offset regardless of report id handling
-    uint8_t seq;    // frame sequence, low 8 bits (gaps => dropped frames)
-    uint8_t chunk;  // 0-based chunk index
-    uint8_t total;  // chunks per frame
-    uint8_t len;    // valid payload bytes in this chunk
+    struct pmw3610_frame_meta meta;
     uint8_t payload[PMW3610_FRAME_CHUNK_PAYLOAD];
 } __packed;
 
+BUILD_ASSERT(sizeof(struct pmw3610_frame_meta) == 1, "meta must pack into one byte");
+BUILD_ASSERT(PMW3610_FRAME_CHUNKS <= 16, "chunk_left bitfield is 4 bits wide");
+BUILD_ASSERT(sizeof(struct pmw3610_frame_report) == 2 + PMW3610_FRAME_CHUNK_PAYLOAD,
+             "report is report_id + meta + fixed payload");
 BUILD_ASSERT(sizeof(struct pmw3610_frame_report) <= 64,
              "frame report must fit a 64-byte full speed packet");
 BUILD_ASSERT(PMW3610_FRAME_CHUNKS * PMW3610_FRAME_CHUNK_PAYLOAD == PMW3610_FRAME_TOTAL,
@@ -61,7 +65,7 @@ static const uint8_t pmw3610_frame_report_desc[] = {
     HID_LOGICAL_MIN8(0x00),
     HID_LOGICAL_MAX16(0xFF, 0x00), // 0..255
     HID_REPORT_SIZE(8),
-    HID_REPORT_COUNT(sizeof(struct pmw3610_frame_report) - 1), // 61
+    HID_REPORT_COUNT(sizeof(struct pmw3610_frame_report) - 1), // 45
     HID_INPUT(ZMK_HID_MAIN_VAL_DATA | ZMK_HID_MAIN_VAL_VAR | ZMK_HID_MAIN_VAL_ABS),
     HID_END_COLLECTION,
 };
@@ -148,25 +152,24 @@ static void pmw3610_frame_hid_thread(void *p1, void *p2, void *p3) {
             continue;
         }
 
-        uint32_t seq = 0;
-        if (pmw3610_get_frame(dev, frame_copy, sizeof(frame_copy), &seq) != 0) {
+        if (pmw3610_get_frame(dev, frame_copy, sizeof(frame_copy)) != 0) {
             continue;
         }
 
         // LOG_DBG("frame chunks");
 
-        for (uint8_t chunk = 0; chunk < PMW3610_FRAME_CHUNKS; chunk++) {
+        for (uint8_t i = 0; i < PMW3610_FRAME_CHUNKS; i++) {
             struct pmw3610_frame_report report = {
                 .report_id = PMW3610_FRAME_REPORT_ID,
-                .magic = PMW3610_FRAME_REPORT_MAGIC,
-                .seq = (uint8_t)seq,
-                .chunk = chunk,
-                .total = PMW3610_FRAME_CHUNKS,
+                .meta =
+                    {
+                        .recog = PMW3610_FRAME_META_RECOG,
+                        .chunk_left = PMW3610_FRAME_CHUNKS - 1 - i,
+                    },
             };
-            size_t offset = chunk * PMW3610_FRAME_CHUNK_PAYLOAD;
+            size_t offset = i * PMW3610_FRAME_CHUNK_PAYLOAD;
 
-            report.len = MIN(PMW3610_FRAME_CHUNK_PAYLOAD, PMW3610_FRAME_TOTAL - offset);
-            memcpy(report.payload, &frame_copy[offset], report.len);
+            memcpy(report.payload, &frame_copy[offset], PMW3610_FRAME_CHUNK_PAYLOAD);
             last_sent_report = report;
 
             // LOG_HEXDUMP_DBG(&report, sizeof(report), "chunk");

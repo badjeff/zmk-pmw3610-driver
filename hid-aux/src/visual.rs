@@ -77,7 +77,6 @@ impl Default for VisualConfig {
 /// Per-frame result, suitable for display and tuning.
 #[derive(Debug, Clone, Copy)]
 pub struct VisualOutput {
-    pub frames: u64,
     /// Relative motion in fixed-point 1/64-pixel units (axis-remapped).
     pub dx: i32,
     pub dy: i32,
@@ -92,7 +91,6 @@ pub struct VisualOutput {
 impl Default for VisualOutput {
     fn default() -> Self {
         Self {
-            frames: 0,
             dx: 0,
             dy: 0,
             dx_counts: 0.0,
@@ -278,7 +276,6 @@ pub fn apply_hysteresis(
 pub struct VisualPipeline {
     cfg: VisualConfig,
     prev: Option<Frame>,
-    frames: u64,
     dx_sm: f32,
     dy_sm: f32,
     bad_streak: u32,
@@ -291,7 +288,6 @@ impl VisualPipeline {
         Self {
             cfg,
             prev: None,
-            frames: 0,
             dx_sm: 0.0,
             dy_sm: 0.0,
             bad_streak: 0,
@@ -309,14 +305,8 @@ impl VisualPipeline {
         self.cfg = cfg;
     }
 
-    #[allow(dead_code)]
-    pub fn frame_count(&self) -> u64 {
-        self.frames
-    }
-
     pub fn process(&mut self, frame: &Frame) -> VisualOutput {
-        self.frames += 1;
-        let mut out = VisualOutput { frames: self.frames, ..VisualOutput::default() };
+        let mut out = VisualOutput::default();
         let f = if self.cfg.prefilter { blur3x3(frame) } else { *frame };
 
         if let Some(prev) = self.prev.as_ref() {
@@ -419,10 +409,17 @@ impl VisualPipeline {
 // Host thread wrapper
 // ---------------------------------------------------------------------------
 
+/// Latest pipeline output plus a version bumped on every update, so callers
+/// can tell "new data" from "same data" (mirrors `FrameReader::poll`).
+struct SharedOutput {
+    out: VisualOutput,
+    version: u64,
+}
+
 /// Runs `VisualPipeline` on a dedicated thread, consuming frames as the HID
 /// reader publishes them. Host-only.
 pub struct Visual {
-    output: Arc<Mutex<VisualOutput>>,
+    output: Arc<Mutex<SharedOutput>>,
     handle: Option<thread::JoinHandle<()>>,
 }
 
@@ -432,7 +429,7 @@ impl Visual {
     /// Spawn the processing thread. `stop` is shared with the reader; setting
     /// it stops the thread. The config is shared so it can be retuned live.
     pub fn start(cfg: Arc<Mutex<VisualConfig>>, rx: FrameReceiver, stop: Arc<AtomicBool>) -> Self {
-        let output = Arc::new(Mutex::new(VisualOutput::default()));
+        let output = Arc::new(Mutex::new(SharedOutput { out: VisualOutput::default(), version: 0 }));
         let out_c = output.clone();
         let cfg_c = cfg.clone();
         let handle = thread::spawn(move || Self::run(cfg_c, rx, out_c, stop));
@@ -442,7 +439,7 @@ impl Visual {
     fn run(
         cfg: Arc<Mutex<VisualConfig>>,
         rx: FrameReceiver,
-        output: Arc<Mutex<VisualOutput>>,
+        output: Arc<Mutex<SharedOutput>>,
         stop: Arc<AtomicBool>,
     ) {
         let mut pipe = VisualPipeline::new(*cfg.lock().unwrap());
@@ -455,12 +452,14 @@ impl Visual {
                     pipe.set_config(*cfg.lock().unwrap());
                     let out = pipe.process(&frame);
                     if let Ok(mut o) = output.lock() {
-                        *o = out;
+                        o.out = out;
+                        o.version += 1;
                     }
                     // Drain any backlog so the latest frame wins and latency stays low.
                     while let Ok((_, f)) = rx.try_recv() {
                         if let Ok(mut o) = output.lock() {
-                            *o = pipe.process(&f);
+                            o.out = pipe.process(&f);
+                            o.version += 1;
                         }
                     }
                 }
@@ -471,7 +470,19 @@ impl Visual {
     }
 
     pub fn snapshot(&self) -> VisualOutput {
-        *self.output.lock().unwrap()
+        self.output.lock().unwrap().out
+    }
+
+    /// Like `FrameReader::poll`: returns the output only when the visual
+    /// thread has produced a new one since the caller last saw it. `seen`
+    /// holds the caller's last-seen version.
+    pub fn poll_output(&self, seen: &mut u64) -> Option<VisualOutput> {
+        let o = self.output.lock().unwrap();
+        if o.version == *seen {
+            return None;
+        }
+        *seen = o.version;
+        Some(o.out)
     }
 
     pub fn stop(mut self) {
